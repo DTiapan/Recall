@@ -132,10 +132,12 @@ Recall evaluates hybrid retrieval on **real-world corpora** with human relevance
 
 **Environment:** `RAG_MODE=local`, FastEmbed `BAAI/bge-small-en-v1.5` (dense + sparse), in-memory Qdrant, Apple Silicon CPU (Sep 2026).
 
-| Dataset | Docs | Queries | HitRate@5 | MRR | Query P50 | Query P95 |
+| Dataset | Docs | Queries | HitRate@5 | MRR | Rerank HitRate@5 | Rerank MRR |
 |---|---:|---:|---:|---:|---:|---:|
-| [Bundled sample](data/sample/) (enterprise MD) | 3 | 6 | **100.0%** | **0.917** | 33.4 ms | 40.3 ms |
-| [BEIR SciFact](https://github.com/beir-cellar/beir) | 500 | 35 | **85.7%** | **0.757** | 51.6 ms | 73.2 ms |
+| [Bundled sample](data/sample/) (MD, DOCX, PDF) | 5 | 10 | **100.0%** | **0.875** | **100.0%** | **1.000** |
+| [BEIR SciFact](https://github.com/beir-cellar/beir) | 500 | 35 | **85.7%** | **0.757** | — | — |
+
+Sample benchmark also reports query P50 **40 ms** and rerank P50 **60 ms** on local FastEmbed (Sep 2026).
 
 ```bash
 # Bundled enterprise corpus (no extra deps, no network)

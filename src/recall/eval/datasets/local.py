@@ -7,7 +7,7 @@ from pathlib import Path
 
 from recall.eval.datasets.models import BenchmarkCorpus, BenchmarkDocument, BenchmarkQuery
 
-SUPPORTED_EXTENSIONS = {".md", ".txt", ".markdown"}
+SUPPORTED_EXTENSIONS = {".md", ".txt", ".markdown", ".pdf", ".docx"}
 
 
 def load_local_benchmark(
@@ -15,7 +15,7 @@ def load_local_benchmark(
     name: str = "sample",
     limit: int | None = None,
 ) -> BenchmarkCorpus:
-    """Loads markdown/text documents and optional ``eval/queries.jsonl`` ground truth."""
+    """Loads local documents (MD, TXT, PDF, DOCX) and optional ``eval/queries.jsonl`` ground truth."""
     root = root.resolve()
     if not root.is_dir():
         raise FileNotFoundError(f"Benchmark dataset directory not found: {root}")
@@ -27,12 +27,15 @@ def load_local_benchmark(
         if "eval" in path.parts:
             continue
         doc_id = path.stem
+        text = ""
+        if path.suffix.lower() in {".md", ".txt", ".markdown"}:
+            text = path.read_text(encoding="utf-8")
         documents.append(
             BenchmarkDocument(
                 doc_id=doc_id,
-                text=path.read_text(encoding="utf-8"),
+                text=text,
                 source_uri=str(path.relative_to(root)),
-                metadata={"file_name": path.name},
+                metadata={"file_name": path.name, "format": path.suffix.lower().lstrip(".")},
             )
         )
         if limit is not None and len(documents) >= limit:

@@ -4,3 +4,7 @@
 {"query_id": "q4", "query": "How much did enterprise segment ARR contribute?", "relevant_sources": ["financial_quarterly_report.md"], "expected_terms": ["enterprise segment", "ARR"]}
 {"query_id": "q5", "query": "What happens during Kubernetes pod eviction in production?", "relevant_sources": ["cloud_infrastructure_runbook.md"], "expected_terms": ["pod eviction", "PodDisruptionBudget"]}
 {"query_id": "q6", "query": "When does the circuit breaker degrade to sparse-only retrieval?", "relevant_sources": ["cloud_infrastructure_runbook.md"], "expected_terms": ["circuit breaker", "sparse-only"]}
+{"query_id": "q7", "query": "How many remote work days per week are allowed?", "relevant_sources": ["employee_handbook.docx"], "expected_terms": ["3 days per week", "remote"]}
+{"query_id": "q8", "query": "What is the annual PTO allowance for full-time employees?", "relevant_sources": ["employee_handbook.docx"], "expected_terms": ["20 PTO days", "calendar year"]}
+{"query_id": "q9", "query": "Which port does the internal Qdrant database use?", "relevant_sources": ["cloud_infrastructure_spec.pdf"], "expected_terms": ["Port 6333", "Qdrant"]}
+{"query_id": "q10", "query": "What is the disaster recovery RPO target?", "relevant_sources": ["cloud_infrastructure_spec.pdf"], "expected_terms": ["RPO target", "15 minutes"]}

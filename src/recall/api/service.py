@@ -289,6 +289,38 @@ class RAGService:
             retriever = self._get_retriever(col)
             return await retriever.retrieve(query, limit=limit, filter_dict=filter_dict)
 
+    async def search_rerank(
+        self,
+        query: str,
+        limit: int = 5,
+        collection_name: str | None = None,
+        retrieve_limit: int | None = None,
+    ) -> list[SearchResult]:
+        """Hybrid retrieval followed by cross-encoder reranking."""
+        col = collection_name or self.default_collection
+        candidate_limit = retrieve_limit or max(limit * 4, self.config.pipeline.retrieval.top_k)
+        candidates = await self.search(
+            query=query,
+            limit=candidate_limit,
+            collection_name=col,
+        )
+        if not candidates:
+            return []
+
+        score_thresh = self.config.pipeline.retrieval.score_threshold
+        with trace_span(
+            _tracer,
+            "rerank",
+            {"candidate.count": len(candidates), "top_k": limit},
+        ):
+            reranked = self.reranker.rerank(
+                query=query,
+                candidates=candidates,
+                top_k=limit,
+                score_threshold=score_thresh,
+            )
+        return reranked if reranked else candidates[:limit]
+
     async def query(
         self,
         question: str,

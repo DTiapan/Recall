@@ -20,9 +20,11 @@ SAMPLE_ROOT = REPO_ROOT / "data" / "sample"
 def test_load_local_sample_dataset():
     corpus = load_local_benchmark(SAMPLE_ROOT, name="sample")
     assert corpus.name == "sample"
-    assert len(corpus.documents) == 3
-    assert len(corpus.queries) == 6
+    assert len(corpus.documents) == 5
+    assert len(corpus.queries) == 10
     assert any("CVE-2024-3094" in doc.text for doc in corpus.documents)
+    formats = {doc.metadata.get("format") for doc in corpus.documents}
+    assert formats == {"docx", "md", "pdf"}
 
 
 def test_resolve_dataset_sample():
@@ -79,8 +81,10 @@ async def test_retrieval_benchmark_on_real_sample_corpus():
     runner = RetrievalBenchmarkRunner(service=service)
     report = await runner.run(corpus=corpus, collection_name="bench_real_sample")
 
-    assert report.documents_ingested == 3
-    assert report.queries_evaluated == 6
+    assert report.documents_ingested == 5
+    assert report.queries_evaluated == 10
     assert report.hit_rate_at_5 >= 0.5
     assert report.mrr > 0.0
+    assert report.hit_rate_at_5_rerank >= report.hit_rate_at_5 or report.hit_rate_at_5_rerank >= 0.5
     assert report.latency_p50_ms >= 0.0
+    assert report.rerank_latency_p50_ms >= 0.0

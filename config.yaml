@@ -5,7 +5,7 @@
 version: "1.0"
 
 # Deployment mode: "local" (FastEmbed + Ollama) or "cloud" (LiteLLM + OpenAI/Anthropic/Gemini)
-mode: "cloud"
+mode: "local"
 
 # Ingestion & Chunking Pipeline
 ingest:
@@ -19,7 +19,7 @@ ingest:
 # Storage & Vector Database (Qdrant)
 storage:
   collection_name: "enterprise_knowledge"
-  vector_size: 1536            # 1536 for text-embedding-3-small, 384 for BAAI/bge-small-en-v1.5
+  vector_size: 384             # 384 for BAAI/bge-small-en-v1.5 (local); 1536 for text-embedding-3-small (cloud)
   distance: "Cosine"           # Cosine, Dot, or Euclid
   hnsw:
     m: 16                      # Max edges per node in HNSW graph

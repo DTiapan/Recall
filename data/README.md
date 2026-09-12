@@ -4,7 +4,13 @@ Recall benchmarks use **real-world documents and labeled queries**, not syntheti
 
 ## Bundled sample corpus (`sample/`)
 
-Three enterprise markdown documents (security policy, financial report, infrastructure runbook) plus `eval/queries.jsonl` with human-authored relevance labels.
+Five enterprise documents covering multiple formats:
+
+- `information_security_policy.md`, `financial_quarterly_report.md`, `cloud_infrastructure_runbook.md`
+- `employee_handbook.docx` (HR policies and benefits table)
+- `cloud_infrastructure_spec.pdf` (VPC, ports, disaster recovery)
+
+Plus `eval/queries.jsonl` with 10 human-authored relevance labels.
 
 ```bash
 recall benchmark --dataset sample

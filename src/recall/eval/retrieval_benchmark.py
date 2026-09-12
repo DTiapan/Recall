@@ -20,6 +20,9 @@ class QueryBenchmarkResult:
     hit_at_5: bool
     reciprocal_rank: float
     latency_ms: float
+    hit_at_5_rerank: bool = False
+    reciprocal_rank_rerank: float = 0.0
+    rerank_latency_ms: float = 0.0
     top_chunk_id: str | None = None
 
 
@@ -30,8 +33,11 @@ class RetrievalBenchmarkReport:
     queries_evaluated: int
     hit_rate_at_5: float
     mrr: float
+    hit_rate_at_5_rerank: float
+    mrr_rerank: float
     latency_p50_ms: float
     latency_p95_ms: float
+    rerank_latency_p50_ms: float
     ingest_seconds: float
     query_results: list[QueryBenchmarkResult] = field(default_factory=list)
 
@@ -41,11 +47,14 @@ class RetrievalBenchmarkReport:
             "",
             f"- Documents ingested: **{self.documents_ingested}**",
             f"- Queries evaluated: **{self.queries_evaluated}**",
-            f"- HitRate@5: **{self.hit_rate_at_5:.1%}**",
-            f"- MRR: **{self.mrr:.3f}**",
+            f"- HitRate@5 (retrieval): **{self.hit_rate_at_5:.1%}**",
+            f"- MRR (retrieval): **{self.mrr:.3f}**",
+            f"- HitRate@5 (rerank): **{self.hit_rate_at_5_rerank:.1%}**",
+            f"- MRR (rerank): **{self.mrr_rerank:.3f}**",
             f"- Ingest time: **{self.ingest_seconds:.2f}s**",
             f"- Query latency P50: **{self.latency_p50_ms:.1f}ms**",
             f"- Query latency P95: **{self.latency_p95_ms:.1f}ms**",
+            f"- Rerank latency P50: **{self.rerank_latency_p50_ms:.1f}ms**",
         ]
         return "\n".join(lines)
 
@@ -61,20 +70,19 @@ class RetrievalBenchmarkRunner:
         corpus: BenchmarkCorpus,
         collection_name: str = "benchmark",
         search_limit: int = 5,
+        retrieve_limit: int = 20,
     ) -> RetrievalBenchmarkReport:
         service = self.service or RAGService(default_collection=collection_name)
 
         ingest_start = time.perf_counter()
         ingested = 0
         for document in corpus.documents:
-            count = await service.ingest_text(
-                text=document.text,
-                source_uri=document.source_uri,
+            ingested += await self._ingest_document(
+                service=service,
+                corpus=corpus,
+                document=document,
                 collection_name=collection_name,
-                doc_id=document.doc_id,
             )
-            if count > 0:
-                ingested += 1
         ingest_seconds = time.perf_counter() - ingest_start
 
         query_results: list[QueryBenchmarkResult] = []
@@ -84,22 +92,19 @@ class RetrievalBenchmarkRunner:
                 labeled_query=labeled_query,
                 collection_name=collection_name,
                 search_limit=search_limit,
+                retrieve_limit=retrieve_limit,
             )
             query_results.append(result)
 
-        hit_rate = (
-            sum(1 for result in query_results if result.hit_at_5) / len(query_results)
-            if query_results
-            else 0.0
-        )
-        mrr = (
-            statistics.mean(result.reciprocal_rank for result in query_results)
-            if query_results
-            else 0.0
-        )
+        hit_rate = _mean_bool(query_results, "hit_at_5")
+        mrr = _mean_attr(query_results, "reciprocal_rank")
+        hit_rate_rerank = _mean_bool(query_results, "hit_at_5_rerank")
+        mrr_rerank = _mean_attr(query_results, "reciprocal_rank_rerank")
         latencies = [result.latency_ms for result in query_results]
+        rerank_latencies = [result.rerank_latency_ms for result in query_results]
         p50 = statistics.median(latencies) if latencies else 0.0
         p95 = _percentile(latencies, 95) if latencies else 0.0
+        rerank_p50 = statistics.median(rerank_latencies) if rerank_latencies else 0.0
 
         return RetrievalBenchmarkReport(
             dataset_name=corpus.name,
@@ -107,11 +112,35 @@ class RetrievalBenchmarkRunner:
             queries_evaluated=len(query_results),
             hit_rate_at_5=hit_rate,
             mrr=mrr,
+            hit_rate_at_5_rerank=hit_rate_rerank,
+            mrr_rerank=mrr_rerank,
             latency_p50_ms=p50,
             latency_p95_ms=p95,
+            rerank_latency_p50_ms=rerank_p50,
             ingest_seconds=ingest_seconds,
             query_results=query_results,
         )
+
+    async def _ingest_document(
+        self,
+        service: RAGService,
+        corpus: BenchmarkCorpus,
+        document,
+        collection_name: str,
+    ) -> int:
+        if corpus.data_root is not None:
+            file_path = corpus.data_root / document.source_uri
+            if file_path.is_file():
+                chunks = await service.ingest_file(file_path, collection_name=collection_name)
+                return 1 if chunks > 0 else 0
+
+        count = await service.ingest_text(
+            text=document.text,
+            source_uri=document.source_uri,
+            collection_name=collection_name,
+            doc_id=document.doc_id,
+        )
+        return 1 if count > 0 else 0
 
     async def _evaluate_query(
         self,
@@ -119,6 +148,7 @@ class RetrievalBenchmarkRunner:
         labeled_query: BenchmarkQuery,
         collection_name: str,
         search_limit: int,
+        retrieve_limit: int,
     ) -> QueryBenchmarkResult:
         start = time.perf_counter()
         results = await service.search(
@@ -128,18 +158,39 @@ class RetrievalBenchmarkRunner:
         )
         latency_ms = (time.perf_counter() - start) * 1000.0
 
-        hit_at_5 = _is_hit(results, labeled_query, search_limit)
-        reciprocal_rank = _reciprocal_rank(results, labeled_query)
+        rerank_start = time.perf_counter()
+        reranked = await service.search_rerank(
+            query=labeled_query.query,
+            limit=search_limit,
+            collection_name=collection_name,
+            retrieve_limit=retrieve_limit,
+        )
+        rerank_latency_ms = (time.perf_counter() - rerank_start) * 1000.0
 
         top_chunk_id = results[0].chunk_id if results else None
         return QueryBenchmarkResult(
             query_id=labeled_query.query_id,
             query=labeled_query.query,
-            hit_at_5=hit_at_5,
-            reciprocal_rank=reciprocal_rank,
+            hit_at_5=_is_hit(results, labeled_query, search_limit),
+            reciprocal_rank=_reciprocal_rank(results, labeled_query),
             latency_ms=latency_ms,
+            hit_at_5_rerank=_is_hit(reranked, labeled_query, search_limit),
+            reciprocal_rank_rerank=_reciprocal_rank(reranked, labeled_query),
+            rerank_latency_ms=rerank_latency_ms,
             top_chunk_id=top_chunk_id,
         )
+
+
+def _mean_bool(results: list[QueryBenchmarkResult], field_name: str) -> float:
+    if not results:
+        return 0.0
+    return sum(1 for result in results if getattr(result, field_name)) / len(results)
+
+
+def _mean_attr(results: list[QueryBenchmarkResult], field_name: str) -> float:
+    if not results:
+        return 0.0
+    return statistics.mean(getattr(result, field_name) for result in results)
 
 
 def _is_hit(results, labeled_query: BenchmarkQuery, limit: int) -> bool:
