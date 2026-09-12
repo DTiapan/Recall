@@ -38,7 +38,13 @@ class ChunkMetadata(BaseModel):
     start_char: int = 0
     end_char: int = 0
     token_count: int = 0
+    page_number: int | None = Field(default=None, description="1-indexed page number for paginated documents (PDF, Word)")
+    total_pages: int | None = Field(default=None, description="Total pages in the parent document")
+    file_type: str | None = Field(default=None, description="File format identifier: pdf, docx, markdown, text, json")
+    content_type: str = Field(default="text", description="Semantic content classification: text, table, code, list")
     section_hierarchy: list[str] = Field(default_factory=list, description="Header breadcrumbs: e.g. ['Doc', 'Section 1']")
+    policy_name: str | None = Field(default=None, description="Associated policy, contract, or document title")
+    last_modified: datetime | None = Field(default=None, description="File last modification timestamp")
     context_summary: str | None = Field(default=None, description="Anthropic-style situational context")
     source_uri: str | None = None
     extra: dict[str, Any] = Field(default_factory=dict)
