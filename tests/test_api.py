@@ -37,8 +37,24 @@ def mock_service():
 
 
 @pytest.fixture
+def secured_service(mock_service):
+    secured_config = AppConfig(
+        env=EnvSettings(rag_env="test", rag_mode="local", rag_api_key="test-secret-key"),
+        pipeline=PipelineConfig(),
+    )
+    mock_service.config = secured_config
+    return mock_service
+
+
+@pytest.fixture
 def client(mock_service):
     app = create_app(rag_service=mock_service)
+    return TestClient(app)
+
+
+@pytest.fixture
+def secured_client(secured_service):
+    app = create_app(rag_service=secured_service)
     return TestClient(app)
 
 
@@ -132,6 +148,64 @@ def test_duplicate_text_ingest_is_skipped(client):
     assert first.json()["chunks_indexed"] == 1
     assert second.status_code == 200
     assert second.json()["chunks_indexed"] == 0
+
+
+def test_ingest_and_chat_require_api_key_when_configured(secured_client):
+    ingest_res = secured_client.post(
+        "/v1/ingest",
+        data={"text": "Protected ingest requires a valid API key.", "source_uri": "secure.md"},
+    )
+    assert ingest_res.status_code == 401
+
+    chat_res = secured_client.post(
+        "/v1/chat",
+        json={"query": "What is protected?"},
+    )
+    assert chat_res.status_code == 401
+
+
+def test_mutating_endpoints_accept_bearer_api_key(secured_client):
+    headers = {"Authorization": "Bearer test-secret-key"}
+    ingest_res = secured_client.post(
+        "/v1/ingest",
+        data={"text": "Authorized ingest via bearer token.", "source_uri": "secure.md"},
+        headers=headers,
+    )
+    assert ingest_res.status_code == 200
+    assert ingest_res.json()["chunks_indexed"] == 1
+
+    chat_res = secured_client.post(
+        "/v1/chat",
+        json={"query": "What was ingested?"},
+        headers=headers,
+    )
+    assert chat_res.status_code == 200
+
+
+def test_mutating_endpoints_accept_x_api_key_header(secured_client):
+    headers = {"X-API-Key": "test-secret-key"}
+    ingest_res = secured_client.post(
+        "/v1/ingest",
+        data={"text": "Authorized ingest via X-API-Key header.", "source_uri": "secure.md"},
+        headers=headers,
+    )
+    assert ingest_res.status_code == 200
+    assert ingest_res.json()["chunks_indexed"] == 1
+
+
+def test_search_remains_public_when_api_key_configured(secured_client):
+    secured_client.post(
+        "/v1/ingest",
+        data={"text": "Public search should work without credentials.", "source_uri": "public.md"},
+        headers={"Authorization": "Bearer test-secret-key"},
+    )
+
+    search_res = secured_client.post(
+        "/v1/search",
+        json={"query": "public search", "limit": 5},
+    )
+    assert search_res.status_code == 200
+    assert len(search_res.json()) >= 1
 
 
 def test_multi_collection_search_isolation(client):

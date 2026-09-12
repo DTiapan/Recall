@@ -8,12 +8,13 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from recall.api.auth import build_api_key_guard
 from recall.api.service import RAGService
 from recall.core.models import SearchResult
 from recall.synthesis.models import SynthesizedResponse
@@ -51,6 +52,7 @@ def create_app(rag_service: RAGService | None = None) -> FastAPI:
     )
 
     service = rag_service or RAGService()
+    verify_api_key = build_api_key_guard(service.config.env.rag_api_key)
 
     # Mount static assets
     if STATIC_DIR.exists():
@@ -92,7 +94,7 @@ def create_app(rag_service: RAGService | None = None) -> FastAPI:
             "sparse_chunks": sparse_count,
         }
 
-    @app.post("/v1/ingest")
+    @app.post("/v1/ingest", dependencies=[Depends(verify_api_key)])
     async def ingest_document(
         file: UploadFile | None = File(None),
         text: str | None = Form(None),
@@ -145,7 +147,7 @@ def create_app(rag_service: RAGService | None = None) -> FastAPI:
         )
         return results
 
-    @app.post("/v1/chat", response_model=SynthesizedResponse)
+    @app.post("/v1/chat", response_model=SynthesizedResponse, dependencies=[Depends(verify_api_key)])
     async def chat(request: ChatRequest) -> SynthesizedResponse:
         """Executes full RAG pipeline: Hybrid Search -> FlashRank -> Compression -> LiteLLM Synthesis."""
         response = await service.query(
