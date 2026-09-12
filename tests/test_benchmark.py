@@ -1,8 +1,8 @@
 """Tests for ChunkingBenchmarkRunner and report generation."""
 
 import pytest
-from rag_kit.core.models import Document
-from rag_kit.eval.benchmark import ChunkingBenchmarkRunner, BenchmarkReport
+from recall.core.models import Document
+from recall.eval.benchmark import ChunkingBenchmarkRunner, BenchmarkReport
 
 
 def test_benchmark_runner_evaluation():

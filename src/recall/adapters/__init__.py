@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import ClassVar
 
-from rag_kit.core.models import Chunk, IngestConfig
+from recall.core.models import Chunk, IngestConfig
 
 
 class BaseChunkingAdapter(ABC):
@@ -33,10 +33,10 @@ class ChunkingAdapterRegistry:
             self._register_default_adapters()
 
     def _register_default_adapters(self) -> None:
-        from rag_kit.adapters.pdf_adapter import PDFChunkingAdapter
-        from rag_kit.adapters.docx_adapter import DocxChunkingAdapter
-        from rag_kit.adapters.markdown_adapter import MarkdownChunkingAdapter
-        from rag_kit.adapters.text_adapter import TextChunkingAdapter
+        from recall.adapters.pdf_adapter import PDFChunkingAdapter
+        from recall.adapters.docx_adapter import DocxChunkingAdapter
+        from recall.adapters.markdown_adapter import MarkdownChunkingAdapter
+        from recall.adapters.text_adapter import TextChunkingAdapter
 
         self.register(TextChunkingAdapter())
         self.register(MarkdownChunkingAdapter())

@@ -1,8 +1,8 @@
 """Tests for core data models and protocol implementations."""
 
 import pytest
-from rag_kit.core.models import Chunk, ChunkMetadata, Document, IngestConfig, compute_content_hash
-from rag_kit.core.interfaces import BaseChunker, BaseDocumentLoader, BaseDeduplicator
+from recall.core.models import Chunk, ChunkMetadata, Document, IngestConfig, compute_content_hash
+from recall.core.interfaces import BaseChunker, BaseDocumentLoader, BaseDeduplicator
 
 
 def test_document_creation_and_hash():

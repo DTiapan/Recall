@@ -5,7 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Protocol, runtime_checkable
 
-from rag_kit.core.models import Chunk, Document, IngestConfig
+from recall.core.models import Chunk, Document, IngestConfig
 
 
 @runtime_checkable

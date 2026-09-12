@@ -1,10 +1,10 @@
 """Tests for chunking strategies: FixedToken, Recursive, and Contextual."""
 
 import pytest
-from rag_kit.core.models import Document, IngestConfig
-from rag_kit.chunkers.fixed_token import FixedTokenChunker
-from rag_kit.chunkers.recursive import RecursiveChunker
-from rag_kit.chunkers.contextual import ContextualChunker
+from recall.core.models import Document, IngestConfig
+from recall.chunkers.fixed_token import FixedTokenChunker
+from recall.chunkers.recursive import RecursiveChunker
+from recall.chunkers.contextual import ContextualChunker
 
 
 def test_fixed_token_chunker_basic():

@@ -5,12 +5,12 @@ from pathlib import Path
 import pytest
 import docx
 
-from rag_kit.adapters import ChunkingAdapterRegistry
-from rag_kit.adapters.docx_adapter import DocxChunkingAdapter
-from rag_kit.adapters.markdown_adapter import MarkdownChunkingAdapter
-from rag_kit.adapters.text_adapter import TextChunkingAdapter
-from rag_kit.chunkers.table_formatter import TableFormatter
-from rag_kit.core.models import IngestConfig
+from recall.adapters import ChunkingAdapterRegistry
+from recall.adapters.docx_adapter import DocxChunkingAdapter
+from recall.adapters.markdown_adapter import MarkdownChunkingAdapter
+from recall.adapters.text_adapter import TextChunkingAdapter
+from recall.chunkers.table_formatter import TableFormatter
+from recall.core.models import IngestConfig
 
 
 def test_table_formatter_markdown_output():
@@ -136,7 +136,7 @@ def test_adapter_registry(tmp_path: Path):
 
 def test_pdf_chunking_adapter(tmp_path: Path):
     from pypdf import PdfWriter
-    from rag_kit.adapters.pdf_adapter import PDFChunkingAdapter
+    from recall.adapters.pdf_adapter import PDFChunkingAdapter
 
     pdf_file = tmp_path / "sample.pdf"
     writer = PdfWriter()

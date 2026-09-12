@@ -1,13 +1,13 @@
 """Core domain models, interfaces, and configuration engine."""
 
-from rag_kit.core.config import AppConfig, EnvSettings, PipelineConfig, load_config
-from rag_kit.core.interfaces import (
+from recall.core.config import AppConfig, EnvSettings, PipelineConfig, load_config
+from recall.core.interfaces import (
     BaseChunker,
     BaseContextEnricher,
     BaseDeduplicator,
     BaseDocumentLoader,
 )
-from rag_kit.core.models import (
+from recall.core.models import (
     Chunk,
     ChunkMetadata,
     Document,

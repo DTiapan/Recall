@@ -6,11 +6,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import ClassVar
 
-from rag_kit.adapters import BaseChunkingAdapter
-from rag_kit.core.models import Chunk, ChunkMetadata, IngestConfig
-from rag_kit.chunkers.recursive import RecursiveChunker
-from rag_kit.chunkers.table_formatter import TableFormatter
-from rag_kit.preprocessing.cleaner import clean_text
+from recall.adapters import BaseChunkingAdapter
+from recall.core.models import Chunk, ChunkMetadata, IngestConfig
+from recall.chunkers.recursive import RecursiveChunker
+from recall.chunkers.table_formatter import TableFormatter
+from recall.preprocessing.cleaner import clean_text
 
 
 class DocxChunkingAdapter(BaseChunkingAdapter):

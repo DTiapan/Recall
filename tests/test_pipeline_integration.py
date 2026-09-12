@@ -5,11 +5,11 @@ Raw File -> Adapter / Loader -> Cleaner/Sanitizer -> Deduplication Gate -> Chunk
 """
 
 from pathlib import Path
-from rag_kit.adapters import ChunkingAdapterRegistry
-from rag_kit.core.config import load_config
-from rag_kit.core.models import Document, IngestConfig
-from rag_kit.preprocessing.cleaner import clean_text
-from rag_kit.preprocessing.dedup import ExactDeduplicator, NearDuplicateDetector
+from recall.adapters import ChunkingAdapterRegistry
+from recall.core.config import load_config
+from recall.core.models import Document, IngestConfig
+from recall.preprocessing.cleaner import clean_text
+from recall.preprocessing.dedup import ExactDeduplicator, NearDuplicateDetector
 
 
 def test_full_e2e_ingestion_pipeline(tmp_path: Path):

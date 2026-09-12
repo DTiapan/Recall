@@ -7,12 +7,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import ClassVar
 
-from rag_kit.adapters import BaseChunkingAdapter
-from rag_kit.chunkers.recursive import RecursiveChunker
-from rag_kit.chunkers.table_formatter import TableFormatter
-from rag_kit.core.models import Chunk, ChunkMetadata, Document, IngestConfig
-from rag_kit.loaders.markdown import MarkdownLoader
-from rag_kit.preprocessing.cleaner import clean_text
+from recall.adapters import BaseChunkingAdapter
+from recall.chunkers.recursive import RecursiveChunker
+from recall.chunkers.table_formatter import TableFormatter
+from recall.core.models import Chunk, ChunkMetadata, Document, IngestConfig
+from recall.loaders.markdown import MarkdownLoader
+from recall.preprocessing.cleaner import clean_text
 
 
 def _extract_blocks(markdown_text: str) -> list[tuple[str, str]]:

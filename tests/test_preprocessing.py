@@ -1,9 +1,9 @@
 """Tests for text cleaning, sanitization, and exact/near deduplication."""
 
 import pytest
-from rag_kit.core.models import Document
-from rag_kit.preprocessing.cleaner import clean_text
-from rag_kit.preprocessing.dedup import ExactDeduplicator, NearDuplicateDetector
+from recall.core.models import Document
+from recall.preprocessing.cleaner import clean_text
+from recall.preprocessing.dedup import ExactDeduplicator, NearDuplicateDetector
 
 
 def test_clean_text_normalizes_whitespace_and_newlines():

@@ -7,9 +7,9 @@ from typing import Iterable
 import xxhash
 import numpy as np
 
-from rag_kit.core.interfaces import BaseDeduplicator
-from rag_kit.core.models import Document, compute_content_hash
-from rag_kit.preprocessing.cleaner import clean_text
+from recall.core.interfaces import BaseDeduplicator
+from recall.core.models import Document, compute_content_hash
+from recall.preprocessing.cleaner import clean_text
 
 
 class ExactDeduplicator(BaseDeduplicator):

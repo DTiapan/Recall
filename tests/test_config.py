@@ -2,7 +2,7 @@
 
 from pathlib import Path
 import pytest
-from rag_kit.core.config import PipelineConfig, load_config
+from recall.core.config import PipelineConfig, load_config
 
 
 def test_load_config_defaults(tmp_path: Path):

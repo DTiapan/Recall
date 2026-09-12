@@ -3,9 +3,9 @@
 import json
 from pathlib import Path
 import pytest
-from rag_kit.loaders.text import TextLoader
-from rag_kit.loaders.markdown import MarkdownLoader
-from rag_kit.loaders.json_loader import JSONLoader
+from recall.loaders.text import TextLoader
+from recall.loaders.markdown import MarkdownLoader
+from recall.loaders.json_loader import JSONLoader
 
 
 def test_text_loader(tmp_path: Path):

@@ -5,9 +5,9 @@ from __future__ import annotations
 import re
 from pathlib import Path
 from typing import Any
-from rag_kit.core.interfaces import BaseDocumentLoader
-from rag_kit.core.models import Document
-from rag_kit.preprocessing.cleaner import clean_text
+from recall.core.interfaces import BaseDocumentLoader
+from recall.core.models import Document
+from recall.preprocessing.cleaner import clean_text
 
 HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
 FRONTMATTER_PATTERN = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)

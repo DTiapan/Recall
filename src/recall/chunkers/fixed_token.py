@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import tiktoken
-from rag_kit.core.interfaces import BaseChunker
-from rag_kit.core.models import Chunk, ChunkMetadata, Document, IngestConfig
+from recall.core.interfaces import BaseChunker
+from recall.core.models import Chunk, ChunkMetadata, Document, IngestConfig
 
 
 class FixedTokenChunker(BaseChunker):

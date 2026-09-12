@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from rag_kit.core.interfaces import BaseDocumentLoader
-from rag_kit.core.models import Document
-from rag_kit.preprocessing.cleaner import clean_text
+from recall.core.interfaces import BaseDocumentLoader
+from recall.core.models import Document
+from recall.preprocessing.cleaner import clean_text
 
 
 class TextLoader(BaseDocumentLoader):

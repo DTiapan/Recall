@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from typing import Callable
-from rag_kit.core.interfaces import BaseChunker
-from rag_kit.core.models import Chunk, Document, IngestConfig
-from rag_kit.chunkers.recursive import RecursiveChunker
+from recall.core.interfaces import BaseChunker
+from recall.core.models import Chunk, Document, IngestConfig
+from recall.chunkers.recursive import RecursiveChunker
 
 
 class ContextualChunker(BaseChunker):

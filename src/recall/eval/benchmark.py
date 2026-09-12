@@ -9,11 +9,11 @@ import numpy as np
 from rich.console import Console
 from rich.table import Table
 
-from rag_kit.core.interfaces import BaseChunker
-from rag_kit.core.models import Chunk, Document
-from rag_kit.chunkers.fixed_token import FixedTokenChunker
-from rag_kit.chunkers.recursive import RecursiveChunker
-from rag_kit.chunkers.contextual import ContextualChunker
+from recall.core.interfaces import BaseChunker
+from recall.core.models import Chunk, Document
+from recall.chunkers.fixed_token import FixedTokenChunker
+from recall.chunkers.recursive import RecursiveChunker
+from recall.chunkers.contextual import ContextualChunker
 
 
 @dataclass

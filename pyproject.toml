@@ -3,13 +3,24 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "rag-kit"
+name = "recall-kit"
 version = "0.1.0"
-description = "Production-grade, enterprise-scale modular RAG toolkit"
+description = "The Open-Source, Turnkey Enterprise RAG Platform"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "RAG Kit Team" }]
+authors = [{ name = "Recall Team" }]
+keywords = [
+    "rag",
+    "retrieval-augmented-generation",
+    "enterprise-rag",
+    "hybrid-search",
+    "self-hosted",
+    "turnkey",
+    "qdrant",
+    "litellm",
+    "fastembed",
+]
 dependencies = [
     "pydantic>=2.7.0",
     "pydantic-settings>=2.2.0",
@@ -40,6 +51,9 @@ dev = [
     "ruff>=0.4.0",
     "mypy>=1.10.0",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/recall"]
 
 [tool.pytest.ini_options]
 minversion = "8.0"
