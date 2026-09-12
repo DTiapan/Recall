@@ -33,10 +33,12 @@ from recall.retrieval.bm25 import BM25Index
 from recall.retrieval.sparse_registry import BM25IndexRegistry, RegistrySparseIndexAdapter
 from recall.storage import QdrantVectorStore
 from recall.storage.qdrant_sparse_index import QdrantSparseIndex
+from recall.observability import get_tracer, trace_span
 from recall.synthesis import Synthesizer
 from recall.synthesis.models import SynthesizedResponse
 
 logger = logging.getLogger(__name__)
+_tracer = get_tracer("recall.service")
 
 
 class RAGService:
@@ -194,27 +196,32 @@ class RAGService:
     ) -> int:
         """Parses, chunks, embeds, and indexes a file."""
         col = collection_name or self.default_collection
-        self._ensure_collection(col)
+        with trace_span(
+            _tracer,
+            "ingest.file",
+            {"collection.name": col, "file.path": str(file_path)},
+        ):
+            self._ensure_collection(col)
 
-        if not self._should_ingest(document_from_file(file_path), col):
-            logger.info("Skipping duplicate document: %s", file_path)
-            return 0
+            if not self._should_ingest(document_from_file(file_path), col):
+                logger.info("Skipping duplicate document: %s", file_path)
+                return 0
 
-        ingest_config = IngestConfig(
-            chunk_size=self.config.pipeline.ingest.chunk_size,
-            chunk_overlap=self.config.pipeline.ingest.chunk_overlap,
-            enable_deduplication=self.config.pipeline.ingest.enable_deduplication,
-        )
+            ingest_config = IngestConfig(
+                chunk_size=self.config.pipeline.ingest.chunk_size,
+                chunk_overlap=self.config.pipeline.ingest.chunk_overlap,
+                enable_deduplication=self.config.pipeline.ingest.enable_deduplication,
+            )
 
-        chunks = self.adapter_registry.process(file_path, config=ingest_config)
-        if not chunks:
-            return 0
+            chunks = self.adapter_registry.process(file_path, config=ingest_config)
+            if not chunks:
+                return 0
 
-        self._attach_embeddings(chunks)
+            self._attach_embeddings(chunks)
 
-        upserted = self.vector_store.upsert(col, chunks)
-        self._index_sparse_legacy(col, chunks)
-        return upserted
+            upserted = self.vector_store.upsert(col, chunks)
+            self._index_sparse_legacy(col, chunks)
+            return upserted
 
     async def ingest_text(
         self,
@@ -224,27 +231,32 @@ class RAGService:
     ) -> int:
         """Ingests raw text directly."""
         col = collection_name or self.default_collection
-        self._ensure_collection(col)
+        with trace_span(
+            _tracer,
+            "ingest.text",
+            {"collection.name": col, "source.uri": source_uri},
+        ):
+            self._ensure_collection(col)
 
-        document = Document(content=text, source_uri=source_uri)
-        if not self._should_ingest(document, col):
-            logger.info("Skipping duplicate text ingest: %s", source_uri)
-            return 0
+            document = Document(content=text, source_uri=source_uri)
+            if not self._should_ingest(document, col):
+                logger.info("Skipping duplicate text ingest: %s", source_uri)
+                return 0
 
-        chunk = Chunk(
-            id=f"text_{hash(text) % 10000000:07d}",
-            text=text,
-            metadata=ChunkMetadata(
-                doc_id=f"doc_{hash(source_uri) % 1000000:06d}",
-                chunk_index=0,
-                source_uri=source_uri,
-            ),
-        )
-        self._attach_embeddings([chunk])
+            chunk = Chunk(
+                id=f"text_{hash(text) % 10000000:07d}",
+                text=text,
+                metadata=ChunkMetadata(
+                    doc_id=f"doc_{hash(source_uri) % 1000000:06d}",
+                    chunk_index=0,
+                    source_uri=source_uri,
+                ),
+            )
+            self._attach_embeddings([chunk])
 
-        self.vector_store.upsert(col, [chunk])
-        self._index_sparse_legacy(col, [chunk])
-        return 1
+            self.vector_store.upsert(col, [chunk])
+            self._index_sparse_legacy(col, [chunk])
+            return 1
 
     def sparse_chunk_count(self, collection_name: str) -> int:
         if self.use_qdrant_sparse:
@@ -267,8 +279,13 @@ class RAGService:
     ) -> list[SearchResult]:
         """Performs concurrent hybrid retrieval (Dense + Sparse) with RRF."""
         col = collection_name or self.default_collection
-        retriever = self._get_retriever(col)
-        return await retriever.retrieve(query, limit=limit, filter_dict=filter_dict)
+        with trace_span(
+            _tracer,
+            "retrieve.hybrid",
+            {"collection.name": col, "query.length": len(query), "retrieve.limit": limit},
+        ):
+            retriever = self._get_retriever(col)
+            return await retriever.retrieve(query, limit=limit, filter_dict=filter_dict)
 
     async def query(
         self,
@@ -279,33 +296,40 @@ class RAGService:
         """Executes the full end-to-end RAG pipeline:
         Retrieve -> Rerank -> Compress -> Synthesize with verified citations.
         """
-        candidates = await self.search(question, limit=top_k * 4, collection_name=collection_name)
-        if not candidates:
-            return SynthesizedResponse(
-                answer="Based on the provided documents, I do not have enough information to answer this question.",
-                citations=[],
-                unverified_citations=[],
-                model_name=getattr(self.synthesizer, "model_name", "unknown"),
-                latency_seconds=0.0,
+        with trace_span(
+            _tracer,
+            "query.pipeline",
+            {"collection.name": collection_name or self.default_collection, "top_k": top_k},
+        ):
+            candidates = await self.search(question, limit=top_k * 4, collection_name=collection_name)
+            if not candidates:
+                return SynthesizedResponse(
+                    answer="Based on the provided documents, I do not have enough information to answer this question.",
+                    citations=[],
+                    unverified_citations=[],
+                    model_name=getattr(self.synthesizer, "model_name", "unknown"),
+                    latency_seconds=0.0,
+                )
+
+            score_thresh = getattr(self.config.pipeline.retrieval, "score_threshold", 0.35)
+            with trace_span(_tracer, "rerank", {"candidate.count": len(candidates), "top_k": top_k}):
+                reranked = self.reranker.rerank(
+                    query=question,
+                    candidates=candidates,
+                    top_k=top_k,
+                    score_threshold=score_thresh,
+                )
+
+            with trace_span(_tracer, "compress", {"candidate.count": len(reranked or candidates)}):
+                compressed = self.compressor.compress(
+                    query=question,
+                    candidates=reranked if reranked else candidates[:top_k],
+                    max_tokens_per_chunk=200,
+                    max_total_tokens=1500,
+                )
+
+            response = await self.synthesizer.synthesize(
+                query=question,
+                candidates=compressed,
             )
-
-        score_thresh = getattr(self.config.pipeline.retrieval, "score_threshold", 0.35)
-        reranked = self.reranker.rerank(
-            query=question,
-            candidates=candidates,
-            top_k=top_k,
-            score_threshold=score_thresh,
-        )
-
-        compressed = self.compressor.compress(
-            query=question,
-            candidates=reranked if reranked else candidates[:top_k],
-            max_tokens_per_chunk=200,
-            max_total_tokens=1500,
-        )
-
-        response = await self.synthesizer.synthesize(
-            query=question,
-            candidates=compressed,
-        )
-        return response
+            return response

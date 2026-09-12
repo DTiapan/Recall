@@ -165,6 +165,9 @@ pytest
 
 # Docker deployment smoke test (requires Docker)
 pytest -m smoke -n 0 -v
+
+# Export traces to an OTLP collector (optional)
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 ```
 
 ---

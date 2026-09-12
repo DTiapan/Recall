@@ -58,6 +58,11 @@ reranking:
   cloud_model: "cohere"
   timeout_ms: 250              # Fallback to RRF top candidates if reranker times out
 
+# Observability (OpenTelemetry)
+observability:
+  enabled: true
+  service_name: "recall-kit"
+
 # LLM Synthesis & Guardrails
 synthesis:
   temperature: 0.1             # Low temperature for factual precision

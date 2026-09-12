@@ -84,6 +84,11 @@ class GuardrailsSettings(BaseModel):
     strict_refusal: bool = True
 
 
+class ObservabilitySettings(BaseModel):
+    enabled: bool = True
+    service_name: str = "recall-kit"
+
+
 class SynthesisSettings(BaseModel):
     temperature: float = 0.1
     max_tokens: int = 1024
@@ -113,6 +118,7 @@ class PipelineConfig(BaseModel):
     retrieval: RetrievalSettings = Field(default_factory=RetrievalSettings)
     reranking: RerankingSettings = Field(default_factory=RerankingSettings)
     synthesis: SynthesisSettings = Field(default_factory=SynthesisSettings)
+    observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
 
 
 class EnvSettings(BaseSettings):
@@ -142,6 +148,10 @@ class EnvSettings(BaseSettings):
     cohere_api_key: str | None = Field(default=None, alias="COHERE_API_KEY")
 
     ollama_base_url: str = Field(default="http://localhost:11434", alias="OLLAMA_BASE_URL")
+
+    otel_exporter_otlp_endpoint: str | None = Field(default=None, alias="OTEL_EXPORTER_OTLP_ENDPOINT")
+    otel_service_name: str | None = Field(default=None, alias="OTEL_SERVICE_NAME")
+    otel_sdk_disabled: bool = Field(default=False, alias="OTEL_SDK_DISABLED")
 
 
 class AppConfig:

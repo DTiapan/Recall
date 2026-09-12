@@ -8,9 +8,11 @@ from typing import Any
 
 from recall.core.interfaces import BaseEmbeddingProvider, BaseHybridRetriever, BaseSparseIndex, BaseVectorStore
 from recall.core.models import SearchResult
+from recall.observability import get_tracer, trace_span
 from recall.retrieval.fusion import reciprocal_rank_fusion
 
 logger = logging.getLogger(__name__)
+_tracer = get_tracer("recall.retrieval")
 
 
 class HybridRetriever:
@@ -48,16 +50,21 @@ class HybridRetriever:
         """Runs embedding generation and vector search protected by timeout circuit breaker."""
         try:
             async def _dense_task() -> list[SearchResult]:
-                query_vector = await asyncio.to_thread(
-                    self.embedding_provider.embed_query, query
-                )
-                return await asyncio.to_thread(
-                    self.vector_store.search,
-                    collection_name=self.collection_name,
-                    query_vector=query_vector,
-                    limit=limit,
-                    filter_dict=filter_dict,
-                )
+                with trace_span(
+                    _tracer,
+                    "retrieve.dense",
+                    {"collection.name": self.collection_name, "limit": limit},
+                ):
+                    query_vector = await asyncio.to_thread(
+                        self.embedding_provider.embed_query, query
+                    )
+                    return await asyncio.to_thread(
+                        self.vector_store.search,
+                        collection_name=self.collection_name,
+                        query_vector=query_vector,
+                        limit=limit,
+                        filter_dict=filter_dict,
+                    )
 
             return await asyncio.wait_for(_dense_task(), timeout=self.dense_timeout_seconds)
         except asyncio.TimeoutError:
@@ -81,12 +88,19 @@ class HybridRetriever:
     ) -> list[SearchResult]:
         """Runs Qdrant native sparse vector search."""
         try:
-            return await asyncio.to_thread(
-                self.sparse_index.search,
-                query=query,
-                limit=limit,
-                filter_dict=filter_dict,
-            )
+            def _sparse_task() -> list[SearchResult]:
+                with trace_span(
+                    _tracer,
+                    "retrieve.sparse",
+                    {"collection.name": self.collection_name, "limit": limit},
+                ):
+                    return self.sparse_index.search(
+                        query=query,
+                        limit=limit,
+                        filter_dict=filter_dict,
+                    )
+
+            return await asyncio.to_thread(_sparse_task)
         except Exception as exc:
             logger.warning("Sparse BM25 retrieval encountered error: %s", exc)
             return []
@@ -110,12 +124,19 @@ class HybridRetriever:
             self._execute_sparse_search(query, limit=limit, filter_dict=filter_dict),
         )
 
-        # Fused rankings via Reciprocal Rank Fusion
-        fused = reciprocal_rank_fusion(
-            ranking_lists=[dense_results, sparse_results],
-            weights=[self.dense_weight, self.sparse_weight],
-            k=self.rrf_k,
-        )
+        with trace_span(
+            _tracer,
+            "retrieve.fusion",
+            {
+                "dense.result_count": len(dense_results),
+                "sparse.result_count": len(sparse_results),
+            },
+        ):
+            fused = reciprocal_rank_fusion(
+                ranking_lists=[dense_results, sparse_results],
+                weights=[self.dense_weight, self.sparse_weight],
+                k=self.rrf_k,
+            )
 
         # Apply score threshold gating if specified
         if score_threshold is not None:

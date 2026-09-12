@@ -11,9 +11,11 @@ from recall.core.interfaces import BaseSynthesizer
 from recall.core.models import SearchResult
 from recall.synthesis.citations import extract_and_verify_citations
 from recall.synthesis.models import SynthesizedResponse
+from recall.observability import get_tracer, trace_span
 from recall.synthesis.sandbox import build_sandboxed_context
 
 logger = logging.getLogger(__name__)
+_tracer = get_tracer("recall.synthesis")
 
 DEFAULT_SYSTEM_PROMPT = """You are Recall, a high-precision enterprise AI assistant.
 Answer the user's query based ONLY on the evidence provided in the <context_documents> section below.
@@ -58,6 +60,20 @@ class Synthesizer:
         """Synthesizes a citation-grounded answer from retrieved search candidates."""
         start_time = time.perf_counter()
 
+        with trace_span(
+            _tracer,
+            "synthesize",
+            {"model.name": self.model_name, "candidate.count": len(candidates)},
+        ):
+            return await self._synthesize_inner(query, candidates, system_prompt, start_time)
+
+    async def _synthesize_inner(
+        self,
+        query: str,
+        candidates: list[SearchResult],
+        system_prompt: str | None,
+        start_time: float,
+    ) -> SynthesizedResponse:
         # Build sandboxed XML context
         sandboxed_xml, candidate_map = build_sandboxed_context(candidates)
 

@@ -5,10 +5,11 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
+import uuid
 from pathlib import Path
 from typing import Any
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -16,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from recall.api.auth import build_api_key_guard
 from recall.api.service import RAGService
+from recall.observability import get_tracer, init_tracing
 from recall.core.models import SearchResult
 from recall.synthesis.models import SynthesizedResponse
 
@@ -32,6 +34,21 @@ class ChatRequest(BaseModel):
     query: str = Field(..., description="User question")
     collection: str = Field(default="documents")
     top_k: int = Field(default=5, ge=1, le=20)
+
+
+def _configure_observability(service: RAGService) -> bool:
+    config = service.config
+    tracing_configured = (
+        config.pipeline.observability.enabled and not config.env.otel_sdk_disabled
+    )
+    service_name = config.env.otel_service_name or config.pipeline.observability.service_name
+    should_initialize = tracing_configured and config.env.rag_env != "test"
+    init_tracing(
+        service_name=service_name,
+        enabled=should_initialize,
+        otlp_endpoint=config.env.otel_exporter_otlp_endpoint,
+    )
+    return tracing_configured
 
 
 def create_app(rag_service: RAGService | None = None) -> FastAPI:
@@ -52,7 +69,21 @@ def create_app(rag_service: RAGService | None = None) -> FastAPI:
     )
 
     service = rag_service or RAGService()
+    tracing_enabled = _configure_observability(service)
     verify_api_key = build_api_key_guard(service.config.env.rag_api_key)
+
+    @app.middleware("http")
+    async def trace_requests(request: Request, call_next):
+        tracer = get_tracer("recall.api")
+        request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+        with tracer.start_as_current_span("http.request") as span:
+            span.set_attribute("http.method", request.method)
+            span.set_attribute("http.route", request.url.path)
+            span.set_attribute("request.id", request_id)
+            response = await call_next(request)
+            span.set_attribute("http.status_code", response.status_code)
+            response.headers["x-request-id"] = request_id
+            return response
 
     # Mount static assets
     if STATIC_DIR.exists():
@@ -75,6 +106,7 @@ def create_app(rag_service: RAGService | None = None) -> FastAPI:
             "mode": str(service.config.mode),
             "embedding_dimensions": service.embedder.dimensions,
             "default_collection": service.default_collection,
+            "tracing_enabled": tracing_enabled,
         }
 
     @app.get("/v1/stats")
