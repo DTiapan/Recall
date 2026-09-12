@@ -57,3 +57,6 @@ htmlcov/
 *.sqlite3
 *.duckdb
 *.parquet
+
+# Qdrant in-memory client session artifacts
+:memory:*
