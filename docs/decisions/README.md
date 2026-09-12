@@ -12,7 +12,8 @@ This directory maintains the Architecture Decision Records for the Production RA
 | [ADR-004](0004-format-aware-chunking-adapters.md) | Format-Aware Chunking Adapters & Structural Ingestion Engine | Accepted | 2026-09-13 |
 | [ADR-005](0005-turnkey-enterprise-rag-platform.md) | Turnkey Enterprise Architecture, Dual-Mode Engine & OSS Stack | Accepted | 2026-09-13 |
 | [ADR-006](0006-vector-storage-and-indexing.md) | Unified Qdrant Vector Store, Dense/Sparse Storage & FastEmbed | Accepted | 2026-09-13 |
-| *Upcoming* | Hybrid Retrieval, Circuit Breakers & Reciprocal Rank Fusion (Phase 3) | Proposed | Pending |
+| [ADR-007](0007-hybrid-retrieval-and-fusion.md) | Concurrent Hybrid Retrieval, Reciprocal Rank Fusion & Circuit Breakers | Accepted | 2026-09-13 |
+| *Upcoming* | Quality Filtering, Cross-Encoder Reranking & Context Compression (Phase 4) | Proposed | Pending |
 
 ## ADR Lifecycle
 ```
