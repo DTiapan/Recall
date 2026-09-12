@@ -79,13 +79,17 @@ def create_app(rag_service: RAGService | None = None) -> FastAPI:
     async def get_stats(collection: str = "documents") -> dict[str, Any]:
         """Returns document count and vector storage metrics."""
         try:
-            count = service.vector_store.count(collection)
+            dense_count = service.vector_store.count(collection)
         except Exception:
-            count = service.sparse_index.count()
+            dense_count = 0
+
+        sparse_count = service.sparse_indexes.count(collection)
 
         return {
             "collection": collection,
-            "total_chunks": count,
+            "total_chunks": max(dense_count, sparse_count),
+            "dense_chunks": dense_count,
+            "sparse_chunks": sparse_count,
         }
 
     @app.post("/v1/ingest")

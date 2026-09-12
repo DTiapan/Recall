@@ -17,10 +17,15 @@ from recall.core.interfaces import (
     BaseSynthesizer,
     BaseVectorStore,
 )
-from recall.core.models import Chunk, ChunkMetadata, IngestConfig, SearchResult
+from recall.core.models import Chunk, ChunkMetadata, Document, IngestConfig, SearchResult
 from recall.embeddings import FastEmbedProvider, MockEmbeddingProvider
+from recall.preprocessing.ingest_gate import (
+    DedupGateRegistry,
+    document_from_file,
+    should_ingest_document,
+)
 from recall.rerank import ContextCompressor, FlashRankReranker, MockReranker
-from recall.retrieval import BM25Index, HybridRetriever
+from recall.retrieval import BM25Index, BM25IndexRegistry, HybridRetriever, RegistrySparseIndexAdapter
 from recall.storage import QdrantVectorStore
 from recall.synthesis import Synthesizer
 from recall.synthesis.models import SynthesizedResponse
@@ -36,10 +41,11 @@ class RAGService:
         config: AppConfig | None = None,
         vector_store: BaseVectorStore | None = None,
         embedding_provider: BaseEmbeddingProvider | None = None,
-        sparse_index: BaseSparseIndex | None = None,
+        sparse_index: BaseSparseIndex | BM25Index | BM25IndexRegistry | None = None,
         reranker: BaseReranker | None = None,
         compressor: BaseContextCompressor | None = None,
         synthesizer: BaseSynthesizer | None = None,
+        dedup_gates: DedupGateRegistry | None = None,
         default_collection: str = "documents",
     ) -> None:
         self.config = config or load_config()
@@ -65,8 +71,19 @@ class RAGService:
                 api_key=self.config.env.qdrant_api_key,
             )
 
-        # Initialize Sparse Index
-        self.sparse_index = sparse_index or BM25Index()
+        # Initialize per-collection sparse indexes
+        if isinstance(sparse_index, BM25IndexRegistry):
+            self.sparse_indexes = sparse_index
+        elif isinstance(sparse_index, BM25Index):
+            self.sparse_indexes = BM25IndexRegistry({default_collection: sparse_index})
+        elif isinstance(sparse_index, RegistrySparseIndexAdapter):
+            self.sparse_indexes = sparse_index._registry
+        else:
+            self.sparse_indexes = BM25IndexRegistry()
+
+        self._dedup_gates = dedup_gates or DedupGateRegistry(
+            near_dup_threshold=self.config.pipeline.ingest.near_dup_threshold,
+        )
 
         # Initialize Reranker
         if reranker:
@@ -91,21 +108,22 @@ class RAGService:
                 max_tokens=self.config.pipeline.synthesis.max_tokens,
             )
 
-        # Initialize Hybrid Retriever
+        self.adapter_registry = ChunkingAdapterRegistry()
+        self._ensure_collection(self.default_collection)
+
+    def _get_retriever(self, collection_name: str) -> BaseHybridRetriever:
         timeout_sec = self.config.pipeline.retrieval.timeout_ms / 1000.0
-        self.retriever: BaseHybridRetriever = HybridRetriever(
+        sparse_adapter = RegistrySparseIndexAdapter(self.sparse_indexes, collection_name)
+        return HybridRetriever(
             vector_store=self.vector_store,
             embedding_provider=self.embedder,
-            sparse_index=self.sparse_index,
-            collection_name=self.default_collection,
+            sparse_index=sparse_adapter,
+            collection_name=collection_name,
             dense_weight=self.config.pipeline.retrieval.dense_weight,
             sparse_weight=self.config.pipeline.retrieval.sparse_weight,
             rrf_k=self.config.pipeline.retrieval.rrf_k,
             dense_timeout_seconds=timeout_sec,
         )
-
-        self.adapter_registry = ChunkingAdapterRegistry()
-        self._ensure_collection(self.default_collection)
 
     def _ensure_collection(self, collection_name: str) -> None:
         """Ensures Qdrant collection exists with the appropriate vector dimension."""
@@ -117,6 +135,14 @@ class RAGService:
                 enable_quantization=enable_quant,
             )
 
+    def _should_ingest(self, document: Document, collection_name: str) -> bool:
+        gate = self._dedup_gates.get(collection_name)
+        return should_ingest_document(
+            document,
+            gate,
+            enable_deduplication=self.config.pipeline.ingest.enable_deduplication,
+        )
+
     async def ingest_file(
         self,
         file_path: Path,
@@ -125,6 +151,10 @@ class RAGService:
         """Parses, chunks, embeds, and indexes a file."""
         col = collection_name or self.default_collection
         self._ensure_collection(col)
+
+        if not self._should_ingest(document_from_file(file_path), col):
+            logger.info("Skipping duplicate document: %s", file_path)
+            return 0
 
         ingest_config = IngestConfig(
             chunk_size=self.config.pipeline.ingest.chunk_size,
@@ -142,9 +172,9 @@ class RAGService:
         for chunk, emb in zip(chunks, embeddings):
             chunk.embedding = emb
 
-        # Insert into Qdrant and update BM25
+        # Insert into Qdrant and append to collection-scoped BM25 index
         upserted = self.vector_store.upsert(col, chunks)
-        self.sparse_index.index(chunks)
+        self.sparse_indexes.index(col, chunks)
         return upserted
 
     async def ingest_text(
@@ -156,6 +186,11 @@ class RAGService:
         """Ingests raw text directly."""
         col = collection_name or self.default_collection
         self._ensure_collection(col)
+
+        document = Document(content=text, source_uri=source_uri)
+        if not self._should_ingest(document, col):
+            logger.info("Skipping duplicate text ingest: %s", source_uri)
+            return 0
 
         chunk = Chunk(
             id=f"text_{hash(text) % 10000000:07d}",
@@ -170,7 +205,7 @@ class RAGService:
         chunk.embedding = emb
 
         self.vector_store.upsert(col, [chunk])
-        self.sparse_index.index([chunk])
+        self.sparse_indexes.index(col, [chunk])
         return 1
 
     async def search(
@@ -182,18 +217,8 @@ class RAGService:
     ) -> list[SearchResult]:
         """Performs concurrent hybrid retrieval (Dense + Sparse) with RRF."""
         col = collection_name or self.default_collection
-        if col != self.default_collection:
-            retriever = HybridRetriever(
-                vector_store=self.vector_store,
-                embedding_provider=self.embedder,
-                sparse_index=self.sparse_index,
-                collection_name=col,
-                dense_weight=self.config.pipeline.retrieval.dense_weight,
-                sparse_weight=self.config.pipeline.retrieval.sparse_weight,
-            )
-            return await retriever.retrieve(query, limit=limit, filter_dict=filter_dict)
-
-        return await self.retriever.retrieve(query, limit=limit, filter_dict=filter_dict)
+        retriever = self._get_retriever(col)
+        return await retriever.retrieve(query, limit=limit, filter_dict=filter_dict)
 
     async def query(
         self,

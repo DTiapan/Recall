@@ -34,14 +34,28 @@ class BM25Index:
     def count(self) -> int:
         return len(self._chunks)
 
-    def index(self, chunks: list[Chunk]) -> int:
+    def index(self, chunks: list[Chunk], *, replace: bool = False) -> int:
+        """Indexes chunks, appending by default. Upserts when chunk IDs already exist."""
         if not chunks:
             return 0
 
-        self._chunks = list(chunks)
+        if replace or not self._chunks:
+            self._chunks = list(chunks)
+        else:
+            chunk_positions = {chunk.id: index for index, chunk in enumerate(self._chunks)}
+            for chunk in chunks:
+                if chunk.id in chunk_positions:
+                    self._chunks[chunk_positions[chunk.id]] = chunk
+                else:
+                    chunk_positions[chunk.id] = len(self._chunks)
+                    self._chunks.append(chunk)
+
+        self._rebuild_index()
+        return len(chunks)
+
+    def _rebuild_index(self) -> None:
         self._tokenized_corpus = [tokenize_lexical(c.searchable_text) for c in self._chunks]
-        self._bm25 = BM25Plus(self._tokenized_corpus)
-        return len(self._chunks)
+        self._bm25 = BM25Plus(self._tokenized_corpus) if self._chunks else None
 
     def search(
         self,

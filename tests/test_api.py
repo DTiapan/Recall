@@ -116,3 +116,51 @@ def test_stats_endpoint(client):
     assert res.status_code == 200
     data = res.json()
     assert "total_chunks" in data
+    assert "dense_chunks" in data
+    assert "sparse_chunks" in data
+
+
+def test_duplicate_text_ingest_is_skipped(client):
+    payload = {
+        "text": "Duplicate ingest gate should block identical enterprise policy text.",
+        "source_uri": "policy.md",
+    }
+    first = client.post("/v1/ingest", data=payload)
+    second = client.post("/v1/ingest", data=payload)
+
+    assert first.status_code == 200
+    assert first.json()["chunks_indexed"] == 1
+    assert second.status_code == 200
+    assert second.json()["chunks_indexed"] == 0
+
+
+def test_multi_collection_search_isolation(client):
+    client.post(
+        "/v1/ingest",
+        data={
+            "text": "Collection A contains details about WireGuard VPN remote access.",
+            "source_uri": "a.md",
+            "collection": "collection_a",
+        },
+    )
+    client.post(
+        "/v1/ingest",
+        data={
+            "text": "Collection B contains details about Kubernetes ingress controllers.",
+            "source_uri": "b.md",
+            "collection": "collection_b",
+        },
+    )
+
+    results_a = client.post(
+        "/v1/search",
+        json={"query": "WireGuard VPN", "limit": 5, "collection": "collection_a"},
+    ).json()
+    results_b = client.post(
+        "/v1/search",
+        json={"query": "WireGuard VPN", "limit": 5, "collection": "collection_b"},
+    ).json()
+
+    assert len(results_a) >= 1
+    assert "WireGuard" in results_a[0]["text"]
+    assert all("WireGuard" not in result["text"] for result in results_b)

@@ -100,6 +100,59 @@ def test_bm25_metadata_filtering():
     assert stage_results[0].chunk_id == "c2"
 
 
+def test_bm25_incremental_indexing_preserves_prior_documents():
+    index = BM25Index()
+    doc_a = [
+        Chunk(
+            id="a1",
+            text="Alpha team owns the authentication service and OAuth flows.",
+            metadata=ChunkMetadata(doc_id="d1", chunk_index=0),
+        )
+    ]
+    doc_b = [
+        Chunk(
+            id="b1",
+            text="Beta team maintains the billing ledger and invoice reconciliation.",
+            metadata=ChunkMetadata(doc_id="d2", chunk_index=0),
+        )
+    ]
+
+    index.index(doc_a)
+    index.index(doc_b)
+
+    assert index.count() == 2
+
+    alpha_results = index.search("authentication OAuth", limit=5)
+    assert len(alpha_results) >= 1
+    assert alpha_results[0].chunk_id == "a1"
+
+    billing_results = index.search("billing invoice", limit=5)
+    assert len(billing_results) >= 1
+    assert billing_results[0].chunk_id == "b1"
+
+
+def test_bm25_upserts_existing_chunk_ids():
+    index = BM25Index()
+    original = Chunk(
+        id="shared",
+        text="Original sparse retrieval content about Redis caching.",
+        metadata=ChunkMetadata(doc_id="d1", chunk_index=0),
+    )
+    updated = Chunk(
+        id="shared",
+        text="Updated sparse retrieval content about PostgreSQL replication.",
+        metadata=ChunkMetadata(doc_id="d1", chunk_index=0),
+    )
+
+    index.index([original])
+    index.index([updated])
+
+    assert index.count() == 1
+    results = index.search("PostgreSQL replication", limit=1)
+    assert results[0].chunk_id == "shared"
+    assert "PostgreSQL" in results[0].text
+
+
 def test_bm25_empty_and_edge_cases():
     index = BM25Index()
     assert index.search("anything") == []
