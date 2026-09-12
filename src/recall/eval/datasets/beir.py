@@ -74,6 +74,7 @@ def load_beir_benchmark(
                 query_id=str(query_id),
                 query=query_text,
                 relevant_doc_ids=relevant,
+                relevant_sources=[f"beir:{normalized}/{doc_id}" for doc_id in relevant],
             )
         )
         if query_limit is not None and len(benchmark_queries) >= query_limit:

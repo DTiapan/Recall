@@ -71,6 +71,7 @@ class RetrievalBenchmarkRunner:
                 text=document.text,
                 source_uri=document.source_uri,
                 collection_name=collection_name,
+                doc_id=document.doc_id,
             )
             if count > 0:
                 ingested += 1

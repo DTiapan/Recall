@@ -228,6 +228,7 @@ class RAGService:
         text: str,
         source_uri: str = "manual_input.txt",
         collection_name: str | None = None,
+        doc_id: str | None = None,
     ) -> int:
         """Ingests raw text directly."""
         col = collection_name or self.default_collection
@@ -243,11 +244,12 @@ class RAGService:
                 logger.info("Skipping duplicate text ingest: %s", source_uri)
                 return 0
 
+            resolved_doc_id = doc_id or f"doc_{hash(source_uri) % 1000000:06d}"
             chunk = Chunk(
                 id=f"text_{hash(text) % 10000000:07d}",
                 text=text,
                 metadata=ChunkMetadata(
-                    doc_id=f"doc_{hash(source_uri) % 1000000:06d}",
+                    doc_id=resolved_doc_id,
                     chunk_index=0,
                     source_uri=source_uri,
                 ),

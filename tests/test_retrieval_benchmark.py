@@ -31,6 +31,36 @@ def test_resolve_dataset_sample():
     assert len(corpus.documents) >= 3
 
 
+def test_beir_doc_id_preserved_through_ingest_metadata():
+    from recall.eval.retrieval_benchmark import _is_hit
+    from recall.eval.datasets.models import BenchmarkQuery
+    from recall.core.models import ChunkMetadata, SearchResult
+
+    query = BenchmarkQuery(
+        query_id="beir-q1",
+        query="example",
+        relevant_doc_ids=["3171584"],
+        relevant_sources=["beir:scifact/3171584"],
+    )
+    hit = _is_hit(
+        [
+            SearchResult(
+                chunk_id="c1",
+                text="Scientific abstract text.",
+                score=0.9,
+                metadata=ChunkMetadata(
+                    doc_id="3171584",
+                    chunk_index=0,
+                    source_uri="beir:scifact/3171584",
+                ),
+            )
+        ],
+        query,
+        5,
+    )
+    assert hit is True
+
+
 @pytest.mark.asyncio
 async def test_retrieval_benchmark_on_real_sample_corpus():
     corpus = load_local_benchmark(SAMPLE_ROOT, name="sample")

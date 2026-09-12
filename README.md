@@ -2,8 +2,8 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Architecture: ADRs](https://img.shields.io/badge/architecture-11%20ADRs%20recorded-blue.svg)](docs/decisions/)
-[![Tests](https://img.shields.io/badge/tests-66%20passed-brightgreen.svg)]()
+[![Architecture: ADRs](https://img.shields.io/badge/architecture-13%20ADRs%20recorded-blue.svg)](docs/decisions/)
+[![Tests](https://img.shields.io/badge/tests-91%20passed-brightgreen.svg)]()
 [![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
 > **Recall** is a turnkey, open-source Retrieval-Augmented Generation (RAG) platform that deploys in one click with zero setup—providing self-hosted hybrid search, table-aware structural chunking, cross-encoder reranking, and dual-mode local (Ollama) and cloud (LiteLLM) synthesis for enterprise knowledge bases scaling from 1,000 to 10M+ documents.
@@ -117,6 +117,33 @@ recall ingest path/to/document.pdf --collection documents
 
 # Query the pipeline directly from the terminal
 recall query "What are the production access requirements?"
+
+# Run retrieval benchmarks on real-world datasets
+recall benchmark --dataset sample
+uv pip install -e ".[benchmark]"
+RAG_MODE=local recall benchmark --dataset beir:scifact --limit 500
+```
+
+---
+
+## Retrieval Benchmarks
+
+Recall evaluates hybrid retrieval on **real-world corpora** with human relevance labels — not synthetic templates. See [ADR-013](docs/decisions/0013-real-world-benchmark-datasets.md).
+
+**Environment:** `RAG_MODE=local`, FastEmbed `BAAI/bge-small-en-v1.5` (dense + sparse), in-memory Qdrant, Apple Silicon CPU (Sep 2026).
+
+| Dataset | Docs | Queries | HitRate@5 | MRR | Query P50 | Query P95 |
+|---|---:|---:|---:|---:|---:|---:|
+| [Bundled sample](data/sample/) (enterprise MD) | 3 | 6 | **100.0%** | **0.917** | 33.4 ms | 40.3 ms |
+| [BEIR SciFact](https://github.com/beir-cellar/beir) | 500 | 35 | **85.7%** | **0.757** | 51.6 ms | 73.2 ms |
+
+```bash
+# Bundled enterprise corpus (no extra deps, no network)
+RAG_MODE=local QDRANT_URL=:memory: recall benchmark --dataset sample
+
+# Standard IR benchmark (downloads ~2.7 MB on first run)
+uv pip install -e ".[benchmark]"
+RAG_MODE=local QDRANT_URL=:memory: recall benchmark --dataset beir:scifact --limit 500
 ```
 
 ---
@@ -152,6 +179,7 @@ Every architectural milestone in Recall is documented prior to implementation:
 | [ADR-010](docs/decisions/0010-turnkey-rest-api-and-web-ui.md) | Turnkey REST API, Embedded Web UI, and CLI Tooling | Accepted |
 | [ADR-011](docs/decisions/0011-packaging-and-production-hardening.md) | Multi-Stage Hardened Dockerfile and Compose Orchestration | Accepted |
 | [ADR-012](docs/decisions/0012-synthetic-corpus-and-scale-benchmarking.md) | Synthetic Enterprise Corpus Generation and Multi-Scale Stress Benchmarking | Accepted |
+| [ADR-013](docs/decisions/0013-real-world-benchmark-datasets.md) | Real-World Benchmark Datasets (BEIR + Curated Corpus) | Accepted |
 
 ---
 
