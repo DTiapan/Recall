@@ -50,9 +50,9 @@ htmlcov/
 !.env.example
 
 # Large Data & Vector DB storage (local testing)
-data/
-storage/
-indices/
+/data/
+/storage/
+/indices/
 *.db
 *.sqlite3
 *.duckdb

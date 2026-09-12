@@ -77,3 +77,15 @@ class IngestConfig(BaseModel):
     tokenizer_name: str = Field(default="cl100k_base", description="Tiktoken or HF tokenizer encoding")
     enable_deduplication: bool = Field(default=True, description="Filter duplicate documents and chunks")
     enable_contextual_enrichment: bool = Field(default=False, description="Enrich chunks with contextual awareness")
+
+
+class SearchResult(BaseModel):
+    """Represents a matched chunk returned from vector similarity or hybrid search."""
+
+    chunk_id: str = Field(..., description="Unique chunk identifier")
+    score: float = Field(..., description="Similarity or fusion relevance score")
+    text: str = Field(..., description="Chunk content text")
+    metadata: ChunkMetadata = Field(..., description="Provenance and structural metadata")
+    vector_name: str = Field(default="dense", description="Matched vector space: dense or sparse")
+    rerank_score: float | None = Field(default=None, description="Optional secondary score from cross-encoder")
+

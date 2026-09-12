@@ -6,12 +6,15 @@ from recall.core.interfaces import (
     BaseContextEnricher,
     BaseDeduplicator,
     BaseDocumentLoader,
+    BaseEmbeddingProvider,
+    BaseVectorStore,
 )
 from recall.core.models import (
     Chunk,
     ChunkMetadata,
     Document,
     IngestConfig,
+    SearchResult,
     compute_content_hash,
 )
 
@@ -24,9 +27,12 @@ __all__ = [
     "BaseContextEnricher",
     "BaseDeduplicator",
     "BaseDocumentLoader",
+    "BaseEmbeddingProvider",
+    "BaseVectorStore",
     "Chunk",
     "ChunkMetadata",
     "Document",
     "IngestConfig",
+    "SearchResult",
     "compute_content_hash",
 ]
