@@ -7,9 +7,8 @@ This directory maintains the Architecture Decision Records for the Production RA
 | ADR | Title | Status | Date |
 |-----|-------|--------|------|
 | [ADR-001](0001-record-architecture-decisions.md) | Record Architecture Decisions | Accepted | 2026-09-13 |
-| *Upcoming* | Ingestion & Chunking Evaluation Strategy | Proposed | Pending |
-| *Upcoming* | Vector Store & Indexing Engine Selection (10M scale) | Proposed | Pending |
-| *Upcoming* | Hybrid Retrieval & Cross-Encoder Reranking Architecture | Proposed | Pending |
+| [ADR-002](0002-production-rag-architecture.md) | Production RAG Architecture, Query Transformation & Security | Accepted | 2026-09-13 |
+| *Upcoming* | Vector Store Selection & 10M Quantization Tuning | Proposed | Pending |
 
 ## ADR Lifecycle
 ```
