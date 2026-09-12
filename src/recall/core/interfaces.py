@@ -175,4 +175,19 @@ class BaseContextCompressor(Protocol):
         ...
 
 
+@runtime_checkable
+class BaseSynthesizer(Protocol):
+    """Protocol for LLM answer synthesis with context sandboxing and citation attribution."""
+
+    async def synthesize(
+        self,
+        query: str,
+        candidates: list[SearchResult],
+        system_prompt: str | None = None,
+    ) -> Any:
+        """Synthesizes a citation-backed response from retrieved candidates."""
+        ...
+
+
+
 

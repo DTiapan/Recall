@@ -61,4 +61,16 @@ class ChunkingAdapterRegistry:
         return adapter.chunk(Path(file_path), config)
 
 
-__all__ = ["BaseChunkingAdapter", "ChunkingAdapterRegistry"]
+from recall.adapters.docx_adapter import DocxChunkingAdapter
+from recall.adapters.markdown_adapter import MarkdownChunkingAdapter
+from recall.adapters.pdf_adapter import PDFChunkingAdapter
+from recall.adapters.text_adapter import TextChunkingAdapter
+
+__all__ = [
+    "BaseChunkingAdapter",
+    "ChunkingAdapterRegistry",
+    "DocxChunkingAdapter",
+    "MarkdownChunkingAdapter",
+    "PDFChunkingAdapter",
+    "TextChunkingAdapter",
+]

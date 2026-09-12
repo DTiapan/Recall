@@ -11,6 +11,7 @@ from recall.core.interfaces import (
     BaseHybridRetriever,
     BaseReranker,
     BaseSparseIndex,
+    BaseSynthesizer,
     BaseVectorStore,
 )
 from recall.core.models import (
@@ -36,6 +37,7 @@ __all__ = [
     "BaseHybridRetriever",
     "BaseReranker",
     "BaseSparseIndex",
+    "BaseSynthesizer",
     "BaseVectorStore",
     "Chunk",
     "ChunkMetadata",
