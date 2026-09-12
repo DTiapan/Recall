@@ -7,6 +7,8 @@ from recall.core.interfaces import (
     BaseDeduplicator,
     BaseDocumentLoader,
     BaseEmbeddingProvider,
+    BaseHybridRetriever,
+    BaseSparseIndex,
     BaseVectorStore,
 )
 from recall.core.models import (
@@ -28,6 +30,8 @@ __all__ = [
     "BaseDeduplicator",
     "BaseDocumentLoader",
     "BaseEmbeddingProvider",
+    "BaseHybridRetriever",
+    "BaseSparseIndex",
     "BaseVectorStore",
     "Chunk",
     "ChunkMetadata",

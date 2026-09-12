@@ -107,3 +107,41 @@ class BaseVectorStore(Protocol):
         """Deletes a collection."""
         ...
 
+
+@runtime_checkable
+class BaseSparseIndex(Protocol):
+    """Protocol for lexical sparse indexing and keyword search (BM25 / SPLADE)."""
+
+    def index(self, chunks: list[Chunk]) -> int:
+        """Indexes a list of chunks into the sparse lexical structure. Returns count indexed."""
+        ...
+
+    def search(
+        self,
+        query: str,
+        limit: int = 10,
+        filter_dict: dict[str, Any] | None = None,
+    ) -> list[SearchResult]:
+        """Performs lexical search for exact terms, codes, and keywords."""
+        ...
+
+    def count(self) -> int:
+        """Returns total documents indexed."""
+        ...
+
+
+@runtime_checkable
+class BaseHybridRetriever(Protocol):
+    """Protocol for concurrent two-fold hybrid retrieval and fusion."""
+
+    async def retrieve(
+        self,
+        query: str,
+        limit: int = 20,
+        filter_dict: dict[str, Any] | None = None,
+        score_threshold: float | None = None,
+    ) -> list[SearchResult]:
+        """Performs concurrent hybrid retrieval (Dense + Sparse) with Reciprocal Rank Fusion."""
+        ...
+
+
