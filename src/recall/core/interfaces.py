@@ -145,3 +145,34 @@ class BaseHybridRetriever(Protocol):
         ...
 
 
+@runtime_checkable
+class BaseReranker(Protocol):
+    """Protocol for cross-encoder reranking and relevance scoring."""
+
+    def rerank(
+        self,
+        query: str,
+        candidates: list[SearchResult],
+        top_k: int = 5,
+        score_threshold: float | None = None,
+    ) -> list[SearchResult]:
+        """Reranks search candidates using deep cross-attention and applies score threshold gating."""
+        ...
+
+
+@runtime_checkable
+class BaseContextCompressor(Protocol):
+    """Protocol for extractive passage and sentence context compression."""
+
+    def compress(
+        self,
+        query: str,
+        candidates: list[SearchResult],
+        max_tokens_per_chunk: int = 200,
+        max_total_tokens: int = 1500,
+    ) -> list[SearchResult]:
+        """Compresses retrieved chunks by extracting query-relevant sentences while preserving provenance."""
+        ...
+
+
+

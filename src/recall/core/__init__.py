@@ -3,11 +3,13 @@
 from recall.core.config import AppConfig, EnvSettings, PipelineConfig, load_config
 from recall.core.interfaces import (
     BaseChunker,
+    BaseContextCompressor,
     BaseContextEnricher,
     BaseDeduplicator,
     BaseDocumentLoader,
     BaseEmbeddingProvider,
     BaseHybridRetriever,
+    BaseReranker,
     BaseSparseIndex,
     BaseVectorStore,
 )
@@ -26,11 +28,13 @@ __all__ = [
     "PipelineConfig",
     "load_config",
     "BaseChunker",
+    "BaseContextCompressor",
     "BaseContextEnricher",
     "BaseDeduplicator",
     "BaseDocumentLoader",
     "BaseEmbeddingProvider",
     "BaseHybridRetriever",
+    "BaseReranker",
     "BaseSparseIndex",
     "BaseVectorStore",
     "Chunk",
