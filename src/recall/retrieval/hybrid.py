@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 class HybridRetriever:
     """Production concurrent hybrid retriever implementing two-fold retrieval
-    (dense vector similarity via Qdrant + lexical BM25) fused with Reciprocal
+    (dense vector similarity via Qdrant + native sparse vectors) fused with Reciprocal
     Rank Fusion (RRF) and protected by a dense circuit breaker.
     """
 
@@ -79,7 +79,7 @@ class HybridRetriever:
         limit: int,
         filter_dict: dict[str, Any] | None,
     ) -> list[SearchResult]:
-        """Runs BM25 lexical sparse search."""
+        """Runs Qdrant native sparse vector search."""
         try:
             return await asyncio.to_thread(
                 self.sparse_index.search,

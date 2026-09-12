@@ -67,6 +67,19 @@ class BaseEmbeddingProvider(Protocol):
 
 
 @runtime_checkable
+class BaseSparseEmbeddingProvider(Protocol):
+    """Protocol for generating sparse lexical embeddings (SPLADE / BM25 weights)."""
+
+    def embed_texts(self, texts: list[str]) -> list[dict[int, float]]:
+        """Generates sparse weight maps for a batch of texts."""
+        ...
+
+    def embed_query(self, query: str) -> dict[int, float]:
+        """Generates a sparse weight map for a single query."""
+        ...
+
+
+@runtime_checkable
 class BaseVectorStore(Protocol):
     """Protocol for vector storage, indexing, and similarity search."""
 

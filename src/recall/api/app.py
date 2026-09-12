@@ -83,7 +83,7 @@ def create_app(rag_service: RAGService | None = None) -> FastAPI:
         except Exception:
             dense_count = 0
 
-        sparse_count = service.sparse_indexes.count(collection)
+        sparse_count = service.sparse_chunk_count(collection)
 
         return {
             "collection": collection,

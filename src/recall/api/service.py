@@ -13,20 +13,26 @@ from recall.core.interfaces import (
     BaseEmbeddingProvider,
     BaseHybridRetriever,
     BaseReranker,
+    BaseSparseEmbeddingProvider,
     BaseSparseIndex,
     BaseSynthesizer,
     BaseVectorStore,
 )
 from recall.core.models import Chunk, ChunkMetadata, Document, IngestConfig, SearchResult
 from recall.embeddings import FastEmbedProvider, MockEmbeddingProvider
+from recall.embeddings.fastembed_sparse_provider import FastEmbedSparseProvider
+from recall.embeddings.mock_sparse_provider import MockSparseEmbeddingProvider
 from recall.preprocessing.ingest_gate import (
     DedupGateRegistry,
     document_from_file,
     should_ingest_document,
 )
 from recall.rerank import ContextCompressor, FlashRankReranker, MockReranker
-from recall.retrieval import BM25Index, BM25IndexRegistry, HybridRetriever, RegistrySparseIndexAdapter
+from recall.retrieval import HybridRetriever
+from recall.retrieval.bm25 import BM25Index
+from recall.retrieval.sparse_registry import BM25IndexRegistry, RegistrySparseIndexAdapter
 from recall.storage import QdrantVectorStore
+from recall.storage.qdrant_sparse_index import QdrantSparseIndex
 from recall.synthesis import Synthesizer
 from recall.synthesis.models import SynthesizedResponse
 
@@ -41,15 +47,18 @@ class RAGService:
         config: AppConfig | None = None,
         vector_store: BaseVectorStore | None = None,
         embedding_provider: BaseEmbeddingProvider | None = None,
+        sparse_embedder: BaseSparseEmbeddingProvider | None = None,
         sparse_index: BaseSparseIndex | BM25Index | BM25IndexRegistry | None = None,
         reranker: BaseReranker | None = None,
         compressor: BaseContextCompressor | None = None,
         synthesizer: BaseSynthesizer | None = None,
         dedup_gates: DedupGateRegistry | None = None,
         default_collection: str = "documents",
+        use_qdrant_sparse: bool = True,
     ) -> None:
         self.config = config or load_config()
         self.default_collection = default_collection
+        self.use_qdrant_sparse = use_qdrant_sparse
 
         # Initialize Embedding Provider
         if embedding_provider:
@@ -71,15 +80,24 @@ class RAGService:
                 api_key=self.config.env.qdrant_api_key,
             )
 
-        # Initialize per-collection sparse indexes
-        if isinstance(sparse_index, BM25IndexRegistry):
-            self.sparse_indexes = sparse_index
-        elif isinstance(sparse_index, BM25Index):
-            self.sparse_indexes = BM25IndexRegistry({default_collection: sparse_index})
-        elif isinstance(sparse_index, RegistrySparseIndexAdapter):
-            self.sparse_indexes = sparse_index._registry
+        # Initialize sparse embedding + index strategy
+        if sparse_embedder:
+            self.sparse_embedder = sparse_embedder
+        elif self.config.env.rag_env == "test":
+            self.sparse_embedder = MockSparseEmbeddingProvider()
         else:
-            self.sparse_indexes = BM25IndexRegistry()
+            self.sparse_embedder = FastEmbedSparseProvider()
+
+        self._legacy_sparse_indexes: BM25IndexRegistry | None = None
+        if isinstance(sparse_index, BM25IndexRegistry):
+            self._legacy_sparse_indexes = sparse_index
+            self.use_qdrant_sparse = False
+        elif isinstance(sparse_index, BM25Index):
+            self._legacy_sparse_indexes = BM25IndexRegistry({default_collection: sparse_index})
+            self.use_qdrant_sparse = False
+        elif isinstance(sparse_index, RegistrySparseIndexAdapter):
+            self._legacy_sparse_indexes = sparse_index.registry
+            self.use_qdrant_sparse = False
 
         self._dedup_gates = dedup_gates or DedupGateRegistry(
             near_dup_threshold=self.config.pipeline.ingest.near_dup_threshold,
@@ -111,13 +129,26 @@ class RAGService:
         self.adapter_registry = ChunkingAdapterRegistry()
         self._ensure_collection(self.default_collection)
 
+    def _get_sparse_index(self, collection_name: str) -> BaseSparseIndex:
+        if self.use_qdrant_sparse:
+            if not isinstance(self.vector_store, QdrantVectorStore):
+                raise TypeError("Qdrant sparse retrieval requires a QdrantVectorStore instance.")
+            return QdrantSparseIndex(
+                vector_store=self.vector_store,
+                collection_name=collection_name,
+                sparse_embedder=self.sparse_embedder,
+            )
+
+        if self._legacy_sparse_indexes is None:
+            self._legacy_sparse_indexes = BM25IndexRegistry()
+        return RegistrySparseIndexAdapter(self._legacy_sparse_indexes, collection_name)
+
     def _get_retriever(self, collection_name: str) -> BaseHybridRetriever:
         timeout_sec = self.config.pipeline.retrieval.timeout_ms / 1000.0
-        sparse_adapter = RegistrySparseIndexAdapter(self.sparse_indexes, collection_name)
         return HybridRetriever(
             vector_store=self.vector_store,
             embedding_provider=self.embedder,
-            sparse_index=sparse_adapter,
+            sparse_index=self._get_sparse_index(collection_name),
             collection_name=collection_name,
             dense_weight=self.config.pipeline.retrieval.dense_weight,
             sparse_weight=self.config.pipeline.retrieval.sparse_weight,
@@ -133,6 +164,7 @@ class RAGService:
                 collection_name=collection_name,
                 vector_size=self.embedder.dimensions,
                 enable_quantization=enable_quant,
+                enable_sparse=self.use_qdrant_sparse,
             )
 
     def _should_ingest(self, document: Document, collection_name: str) -> bool:
@@ -142,6 +174,18 @@ class RAGService:
             gate,
             enable_deduplication=self.config.pipeline.ingest.enable_deduplication,
         )
+
+    def _attach_embeddings(self, chunks: list[Chunk]) -> None:
+        texts = [c.searchable_text for c in chunks]
+        dense_embeddings = self.embedder.embed_texts(texts)
+        sparse_embeddings = self.sparse_embedder.embed_texts(texts)
+        for chunk, dense, sparse in zip(chunks, dense_embeddings, sparse_embeddings):
+            chunk.embedding = dense
+            chunk.sparse_vector = sparse
+
+    def _index_sparse_legacy(self, collection_name: str, chunks: list[Chunk]) -> None:
+        if not self.use_qdrant_sparse and self._legacy_sparse_indexes is not None:
+            self._legacy_sparse_indexes.index(collection_name, chunks)
 
     async def ingest_file(
         self,
@@ -166,15 +210,10 @@ class RAGService:
         if not chunks:
             return 0
 
-        # Generate dense embeddings
-        texts = [c.searchable_text for c in chunks]
-        embeddings = self.embedder.embed_texts(texts)
-        for chunk, emb in zip(chunks, embeddings):
-            chunk.embedding = emb
+        self._attach_embeddings(chunks)
 
-        # Insert into Qdrant and append to collection-scoped BM25 index
         upserted = self.vector_store.upsert(col, chunks)
-        self.sparse_indexes.index(col, chunks)
+        self._index_sparse_legacy(col, chunks)
         return upserted
 
     async def ingest_text(
@@ -201,12 +240,23 @@ class RAGService:
                 source_uri=source_uri,
             ),
         )
-        emb = self.embedder.embed_query(chunk.searchable_text)
-        chunk.embedding = emb
+        self._attach_embeddings([chunk])
 
         self.vector_store.upsert(col, [chunk])
-        self.sparse_indexes.index(col, [chunk])
+        self._index_sparse_legacy(col, [chunk])
         return 1
+
+    def sparse_chunk_count(self, collection_name: str) -> int:
+        if self.use_qdrant_sparse:
+            try:
+                if not self.vector_store.collection_exists(collection_name):
+                    return 0
+                return self.vector_store.count(collection_name)
+            except Exception:
+                return 0
+        if self._legacy_sparse_indexes is None:
+            return 0
+        return self._legacy_sparse_indexes.count(collection_name)
 
     async def search(
         self,
@@ -229,7 +279,6 @@ class RAGService:
         """Executes the full end-to-end RAG pipeline:
         Retrieve -> Rerank -> Compress -> Synthesize with verified citations.
         """
-        # 1. Retrieve candidates
         candidates = await self.search(question, limit=top_k * 4, collection_name=collection_name)
         if not candidates:
             return SynthesizedResponse(
@@ -240,7 +289,6 @@ class RAGService:
                 latency_seconds=0.0,
             )
 
-        # 2. Rerank candidates with cross-encoder
         score_thresh = getattr(self.config.pipeline.retrieval, "score_threshold", 0.35)
         reranked = self.reranker.rerank(
             query=question,
@@ -249,7 +297,6 @@ class RAGService:
             score_threshold=score_thresh,
         )
 
-        # 3. Compress context
         compressed = self.compressor.compress(
             query=question,
             candidates=reranked if reranked else candidates[:top_k],
@@ -257,7 +304,6 @@ class RAGService:
             max_total_tokens=1500,
         )
 
-        # 4. Synthesize answer with citation audit trail
         response = await self.synthesizer.synthesize(
             query=question,
             candidates=compressed,

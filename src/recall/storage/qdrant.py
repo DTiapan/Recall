@@ -9,6 +9,7 @@ from qdrant_client.http import models
 
 from recall.core.interfaces import BaseVectorStore
 from recall.core.models import Chunk, ChunkMetadata, SearchResult
+from recall.embeddings.sparse_utils import sparse_dict_to_qdrant
 
 
 DISTANCE_MAP: dict[str, models.Distance] = {
@@ -55,6 +56,7 @@ class QdrantVectorStore:
         vector_size: int,
         distance: str = "Cosine",
         enable_quantization: bool = True,
+        enable_sparse: bool = True,
         hnsw_m: int = 16,
         hnsw_ef_construct: int = 100,
     ) -> None:
@@ -79,9 +81,14 @@ class QdrantVectorStore:
             )
         }
 
+        sparse_vectors_config: dict[str, models.SparseVectorParams] | None = None
+        if enable_sparse:
+            sparse_vectors_config = {"sparse": models.SparseVectorParams()}
+
         self.client.create_collection(
             collection_name=collection_name,
             vectors_config=vectors_config,
+            sparse_vectors_config=sparse_vectors_config,
         )
 
         # Create payload index for fast filtering on server Qdrant
@@ -127,10 +134,15 @@ class QdrantVectorStore:
                 "extra": c.metadata.extra,
             }
 
+            vectors: dict[str, Any] = {"dense": c.embedding}
+            sparse_vector = sparse_dict_to_qdrant(c.sparse_vector)
+            if sparse_vector is not None:
+                vectors["sparse"] = sparse_vector
+
             points.append(
                 models.PointStruct(
                     id=point_id,
-                    vector={"dense": c.embedding},
+                    vector=vectors,
                     payload=payload,
                 )
             )
@@ -195,6 +207,69 @@ class QdrantVectorStore:
                     text=p.get("text", ""),
                     metadata=meta,
                     vector_name="dense",
+                )
+            )
+
+        return results
+
+    def search_sparse(
+        self,
+        collection_name: str,
+        sparse_vector: dict[int, float],
+        limit: int = 10,
+        filter_dict: dict[str, Any] | None = None,
+        score_threshold: float | None = None,
+    ) -> list[SearchResult]:
+        qdrant_sparse = sparse_dict_to_qdrant(sparse_vector)
+        if qdrant_sparse is None:
+            return []
+
+        query_filter: models.Filter | None = None
+        if filter_dict:
+            conditions = []
+            for k, v in filter_dict.items():
+                conditions.append(
+                    models.FieldCondition(
+                        key=k,
+                        match=models.MatchValue(value=v),
+                    )
+                )
+            query_filter = models.Filter(must=conditions)
+
+        response = self.client.query_points(
+            collection_name=collection_name,
+            query=qdrant_sparse,
+            using="sparse",
+            limit=limit,
+            query_filter=query_filter,
+            score_threshold=score_threshold,
+            with_payload=True,
+        )
+
+        results: list[SearchResult] = []
+        for pt in response.points:
+            p = pt.payload or {}
+            meta = ChunkMetadata(
+                doc_id=p.get("doc_id", ""),
+                chunk_index=p.get("chunk_index", 0),
+                total_chunks=p.get("total_chunks", 1),
+                token_count=p.get("token_count", 0),
+                page_number=p.get("page_number"),
+                total_pages=p.get("total_pages"),
+                file_type=p.get("file_type"),
+                content_type=p.get("content_type", "text"),
+                section_hierarchy=p.get("section_hierarchy", []),
+                policy_name=p.get("policy_name"),
+                source_uri=p.get("source_uri"),
+                extra=p.get("extra", {}),
+            )
+            results.append(
+                SearchResult(
+                    chunk_id=p.get("chunk_id", str(pt.id)),
+                    score=float(pt.score) if pt.score is not None else 0.0,
+                    text=p.get("text", ""),
+                    metadata=meta,
+                    vector_name="sparse",
                 )
             )
 

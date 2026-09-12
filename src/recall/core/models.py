@@ -61,7 +61,7 @@ class Chunk(BaseModel):
     )
     metadata: ChunkMetadata
     embedding: list[float] | None = Field(default=None, description="Dense vector embedding")
-    sparse_vector: dict[str, float] | None = Field(default=None, description="Lexical weights e.g. BM25 / SPLADE")
+    sparse_vector: dict[int, float] | None = Field(default=None, description="Lexical weights e.g. BM25 / SPLADE")
 
     @property
     def searchable_text(self) -> str:

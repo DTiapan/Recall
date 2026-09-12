@@ -84,3 +84,40 @@ def test_qdrant_vector_store_lifecycle_and_search():
     # 6. Delete collection
     store.delete_collection(col_name)
     assert not store.collection_exists(col_name)
+
+
+def test_qdrant_sparse_vector_upsert_and_search():
+    from recall.embeddings.mock_sparse_provider import MockSparseEmbeddingProvider
+
+    store = QdrantVectorStore(location=":memory:")
+    sparse_embedder = MockSparseEmbeddingProvider()
+    col_name = "sparse_test_kb"
+    dim = 16
+
+    store.create_collection(collection_name=col_name, vector_size=dim, enable_sparse=True)
+
+    c1_text = "CVE-2024-3094 vulnerability in liblzma requires immediate patching."
+    c2_text = "PostgreSQL replication uses streaming replication for high availability."
+
+    c1 = Chunk(
+        id="sparse#1",
+        text=c1_text,
+        metadata=ChunkMetadata(doc_id="d1", chunk_index=0),
+        embedding=[0.1] * dim,
+        sparse_vector=sparse_embedder.embed_query(c1_text),
+    )
+    c2 = Chunk(
+        id="sparse#2",
+        text=c2_text,
+        metadata=ChunkMetadata(doc_id="d2", chunk_index=0),
+        embedding=[0.2] * dim,
+        sparse_vector=sparse_embedder.embed_query(c2_text),
+    )
+
+    assert store.upsert(col_name, [c1, c2]) == 2
+
+    query_sparse = sparse_embedder.embed_query("CVE-2024-3094 liblzma")
+    results = store.search_sparse(col_name, query_sparse, limit=2)
+    assert len(results) >= 1
+    assert results[0].chunk_id == "sparse#1"
+    assert results[0].vector_name == "sparse"
