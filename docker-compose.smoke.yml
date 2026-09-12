@@ -1,0 +1,8 @@
+# Smoke-test overlay: fast mock providers and non-default host port.
+services:
+  recall:
+    ports:
+      - "${SMOKE_API_PORT:-18080}:8000"
+    environment:
+      RAG_ENV: test
+      RAG_MODE: local

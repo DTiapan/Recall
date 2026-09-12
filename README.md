@@ -160,7 +160,11 @@ Every architectural milestone in Recall is documented prior to implementation:
 All changes are governed by strict test-driven development:
 
 ```bash
-pytest tests/ -v
+# Fast parallel unit/integration suite (smoke tests excluded by default)
+pytest
+
+# Docker deployment smoke test (requires Docker)
+pytest -m smoke -n 0 -v
 ```
 
 ---
