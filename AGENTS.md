@@ -28,9 +28,11 @@ Designed for open-source adoption by small-to-medium businesses (SMBs) and enter
    - `config.yaml`: Version-controlled pipeline tuning parameters (chunk sizes, retrieval thresholds, weights, model selections).
 
 ## Engineering Disciplines & Skill Workflows
-This repository leverages `addyosmani/agent-skills`:
-- **ADRs**: `skills/documentation-and-adrs` for all architectural trade-offs in `docs/decisions/` (`ADR-001-...`).
-- **Brainstorming & Ideation**: `skills/idea-refine` and `skills/interview-me` for vetting architectural trade-offs.
-- **Specs & Task Planning**: `skills/spec-driven-development` and `skills/planning-and-task-breakdown`.
-- **TDD & Code Health**: `skills/test-driven-development`, `skills/code-review-and-quality`, `skills/code-simplification`.
-- **Performance & Observability**: `skills/performance-optimization`, `skills/observability-and-instrumentation`.
+This repository strictly enforces `addyosmani/agent-skills`. See [CONSTRAINTS.md](CONSTRAINTS.md) for the binding contract:
+- **Mandatory Skill Dispatch**: Before executing any task, the agent MUST activate and follow the corresponding workflow skill (`documentation-and-adrs`, `idea-refine`, `spec-driven-development`, `test-driven-development`, `security-and-hardening`, `git-workflow-and-versioning`).
+- **Zero Drift Mandate**:
+  - No premature implementation: Stay within the active phase. Do not build downstream layers until upstream foundations are tested green.
+  - Spec & ADR First: Any architectural fork or new subsystem requires an ADR in `docs/decisions/` before code lock-in.
+  - TDD Verification: All code changes must have tests. 100% of tests must pass on `.venv` before commit.
+  - Quality Bar Preservation: Never skip tests, weaken assertions, or bypass errors to achieve green status.
+
