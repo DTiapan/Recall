@@ -151,6 +151,7 @@ Every architectural milestone in Recall is documented prior to implementation:
 | [ADR-009](docs/decisions/0009-synthesis-and-guardrails.md) | Context Sandboxing, Injection Defense, LiteLLM, and Citation Verification | Accepted |
 | [ADR-010](docs/decisions/0010-turnkey-rest-api-and-web-ui.md) | Turnkey REST API, Embedded Web UI, and CLI Tooling | Accepted |
 | [ADR-011](docs/decisions/0011-packaging-and-production-hardening.md) | Multi-Stage Hardened Dockerfile and Compose Orchestration | Accepted |
+| [ADR-012](docs/decisions/0012-synthetic-corpus-and-scale-benchmarking.md) | Synthetic Enterprise Corpus Generation and Multi-Scale Stress Benchmarking | Accepted |
 
 ---
 

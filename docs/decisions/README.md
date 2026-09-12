@@ -13,7 +13,11 @@ This directory maintains the Architecture Decision Records for the Production RA
 | [ADR-005](0005-turnkey-enterprise-rag-platform.md) | Turnkey Enterprise Architecture, Dual-Mode Engine & OSS Stack | Accepted | 2026-09-13 |
 | [ADR-006](0006-vector-storage-and-indexing.md) | Unified Qdrant Vector Store, Dense/Sparse Storage & FastEmbed | Accepted | 2026-09-13 |
 | [ADR-007](0007-hybrid-retrieval-and-fusion.md) | Concurrent Hybrid Retrieval, Reciprocal Rank Fusion & Circuit Breakers | Accepted | 2026-09-13 |
-| *Upcoming* | Quality Filtering, Cross-Encoder Reranking & Context Compression (Phase 4) | Proposed | Pending |
+| [ADR-008](0008-reranking-and-quality-filtering.md) | Cross-Encoder Reranking, Threshold Gating & Context Compression | Accepted | 2026-09-13 |
+| [ADR-009](0009-synthesis-and-guardrails.md) | Context Sandboxing, Injection Defense, LiteLLM & Citation Verification | Accepted | 2026-09-13 |
+| [ADR-010](0010-turnkey-rest-api-and-web-ui.md) | Turnkey REST API, Embedded Web UI & CLI Tooling | Accepted | 2026-09-13 |
+| [ADR-011](0011-packaging-and-production-hardening.md) | Multi-Stage Hardened Dockerfile & Compose Orchestration | Accepted | 2026-09-13 |
+| [ADR-012](0012-synthetic-corpus-and-scale-benchmarking.md) | Synthetic Enterprise Corpus Generation & Multi-Scale Stress Benchmarking | Accepted | 2026-09-13 |
 
 ## ADR Lifecycle
 ```
