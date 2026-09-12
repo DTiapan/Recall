@@ -115,3 +115,16 @@ class NearDuplicateDetector:
 
         self._signatures[doc_id] = sig
         return None, 0.0
+
+    def is_duplicate(self, document: Document) -> bool:
+        """Returns True if the document has a Jaccard similarity >= threshold with any registered document."""
+        sig = self.compute_signature(document.content)
+        for existing_sig in self._signatures.values():
+            if self.estimate_similarity(sig, existing_sig) >= self.threshold:
+                return True
+        return False
+
+    def register(self, document: Document) -> None:
+        """Registers the document's MinHash signature."""
+        sig = self.compute_signature(document.content)
+        self._signatures[document.id] = sig

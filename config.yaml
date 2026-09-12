@@ -1,0 +1,76 @@
+# Enterprise RAG Kit - Pipeline Configuration
+# Tuning parameters for ingestion, retrieval, and synthesis.
+# For environment secrets and host ports, see .env
+
+version: "1.0"
+
+# Deployment mode: "local" (FastEmbed + Ollama) or "cloud" (LiteLLM + OpenAI/Anthropic/Gemini)
+mode: "cloud"
+
+# Ingestion & Chunking Pipeline
+ingest:
+  chunk_size: 500              # Target tokens per chunk
+  chunk_overlap: 50            # Token overlap between adjacent chunks
+  tokenizer: "cl100k_base"     # Tokenizer encoding
+  enable_deduplication: true   # Filter exact (xxhash) and near (MinHash) duplicates
+  near_dup_threshold: 0.85     # Jaccard similarity threshold for near-duplicates
+  preserve_tables: true        # Retain Markdown table headers across sub-chunks
+
+# Storage & Vector Database (Qdrant)
+storage:
+  collection_name: "enterprise_knowledge"
+  vector_size: 1536            # 1536 for text-embedding-3-small, 384 for BAAI/bge-small-en-v1.5
+  distance: "Cosine"           # Cosine, Dot, or Euclid
+  hnsw:
+    m: 16                      # Max edges per node in HNSW graph
+    ef_construct: 100          # Neighbors evaluated during index construction
+  quantization:
+    enabled: true              # Scalar quantization (INT8) for 75% memory reduction
+    type: "scalar"
+
+# Embedding Model Selection
+embedding:
+  # Local profile: FastEmbed (ONNX, CPU-optimized, zero external egress)
+  local:
+    provider: "fastembed"
+    model_name: "BAAI/bge-small-en-v1.5"
+    dimensions: 384
+  # Cloud profile: OpenAI / Azure / Cohere via LiteLLM
+  cloud:
+    provider: "openai"
+    model_name: "text-embedding-3-small"
+    dimensions: 1536
+
+# Hybrid Retrieval & Fusion
+retrieval:
+  top_k: 20                    # Total candidate chunks pulled from hybrid fusion
+  dense_weight: 0.6            # Weight for dense vector similarity in score blending
+  sparse_weight: 0.4           # Weight for lexical BM25 matching
+  rrf_k: 60                    # Reciprocal Rank Fusion constant
+  score_threshold: 0.35        # Minimum relevance threshold to filter noise
+  timeout_ms: 150              # Circuit breaker: fallback to sparse if dense exceeds 150ms
+
+# Reranking Layer
+reranking:
+  enabled: true
+  top_n: 5                     # Chunks returned to synthesis after cross-encoder
+  local_model: "BAAI/bge-reranker-base"
+  cloud_model: "cohere"
+  timeout_ms: 250              # Fallback to RRF top candidates if reranker times out
+
+# LLM Synthesis & Guardrails
+synthesis:
+  temperature: 0.1             # Low temperature for factual precision
+  max_tokens: 1024
+  # Local profile: Ollama running on localhost
+  local:
+    provider: "ollama"
+    model: "ollama/llama3:8b"
+  # Cloud profile: Unified LiteLLM call
+  cloud:
+    provider: "litellm"
+    model: "gpt-4o"            # Or "claude-3-5-sonnet-20241022", "gemini/gemini-1.5-pro"
+  guardrails:
+    sandbox_xml_tags: true     # Enclose retrieved chunks in <context_document> tags
+    enforce_citation: true     # Require inline chunk ID citations e.g. [doc#0]
+    strict_refusal: true       # Refuse answering if query is out of context domain
