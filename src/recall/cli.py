@@ -35,6 +35,45 @@ def main() -> None:
     query_parser.add_argument("question", type=str, help="User query question")
     query_parser.add_argument("--collection", default="documents", help="Target collection name (default: documents)")
 
+    benchmark_parser = subparsers.add_parser(
+        "benchmark",
+        help="Run retrieval benchmarks on real-world datasets (sample or BEIR)",
+    )
+    benchmark_parser.add_argument(
+        "--dataset",
+        default="sample",
+        help="Dataset id: sample, beir:scifact, beir:fiqa, ... (default: sample)",
+    )
+    benchmark_parser.add_argument(
+        "--dataset-path",
+        type=str,
+        default=None,
+        help="Optional path to a local real-document corpus directory",
+    )
+    benchmark_parser.add_argument(
+        "--scale",
+        choices=["10k", "100k", "1m", "10m"],
+        default=None,
+        help="Subsample large real corpora to a target document count",
+    )
+    benchmark_parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Maximum number of real documents to ingest",
+    )
+    benchmark_parser.add_argument(
+        "--collection",
+        default="benchmark",
+        help="Target Qdrant collection for benchmark ingest (default: benchmark)",
+    )
+    benchmark_parser.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help="Optional path to write markdown benchmark report",
+    )
+
     args = parser.parse_args()
 
     if not args.command or args.command == "serve":
@@ -70,6 +109,32 @@ def main() -> None:
                     print(f"[{c.doc_index}] {c.source_uri}{page_str}: \"{c.snippet[:80]}...\"")
 
         asyncio.run(_run_query())
+
+    elif args.command == "benchmark":
+        from recall.eval.retrieval_benchmark import RetrievalBenchmarkRunner, resolve_dataset
+
+        dataset_path = Path(args.dataset_path) if args.dataset_path else None
+        corpus = resolve_dataset(
+            dataset=args.dataset,
+            dataset_path=dataset_path,
+            limit=args.limit,
+            scale=args.scale,
+        )
+
+        async def _run_benchmark():
+            config = load_config()
+            if config.env.rag_env != "test":
+                print("Tip: set RAG_ENV=test for fast local mock-embedding benchmarks.")
+            service = RAGService(default_collection=args.collection)
+            runner = RetrievalBenchmarkRunner(service=service)
+            report = await runner.run(corpus=corpus, collection_name=args.collection)
+            print(report.to_markdown())
+            if args.output:
+                output_path = Path(args.output)
+                output_path.write_text(report.to_markdown(), encoding="utf-8")
+                print(f"\nWrote report to {output_path}")
+
+        asyncio.run(_run_benchmark())
 
 
 if __name__ == "__main__":

@@ -1,0 +1,6 @@
+{"query_id": "q1", "query": "What is CVE-2024-3094 and how does it relate to xz Utils?", "relevant_sources": ["information_security_policy.md"], "expected_terms": ["CVE-2024-3094", "xz Utils"]}
+{"query_id": "q2", "query": "What are the MFA requirements for employee accounts?", "relevant_sources": ["information_security_policy.md"], "expected_terms": ["MFA", "FIDO2"]}
+{"query_id": "q3", "query": "What was the Q2 2026 EBITDA margin?", "relevant_sources": ["financial_quarterly_report.md"], "expected_terms": ["EBITDA margin", "19.0%"]}
+{"query_id": "q4", "query": "How much did enterprise segment ARR contribute?", "relevant_sources": ["financial_quarterly_report.md"], "expected_terms": ["enterprise segment", "ARR"]}
+{"query_id": "q5", "query": "What happens during Kubernetes pod eviction in production?", "relevant_sources": ["cloud_infrastructure_runbook.md"], "expected_terms": ["pod eviction", "PodDisruptionBudget"]}
+{"query_id": "q6", "query": "When does the circuit breaker degrade to sparse-only retrieval?", "relevant_sources": ["cloud_infrastructure_runbook.md"], "expected_terms": ["circuit breaker", "sparse-only"]}

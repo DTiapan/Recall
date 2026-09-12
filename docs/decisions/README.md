@@ -18,6 +18,7 @@ This directory maintains the Architecture Decision Records for the Production RA
 | [ADR-010](0010-turnkey-rest-api-and-web-ui.md) | Turnkey REST API, Embedded Web UI & CLI Tooling | Accepted | 2026-09-13 |
 | [ADR-011](0011-packaging-and-production-hardening.md) | Multi-Stage Hardened Dockerfile & Compose Orchestration | Accepted | 2026-09-13 |
 | [ADR-012](0012-synthetic-corpus-and-scale-benchmarking.md) | Synthetic Enterprise Corpus Generation & Multi-Scale Stress Benchmarking | Accepted | 2026-09-13 |
+| [ADR-013](0013-real-world-benchmark-datasets.md) | Real-World Benchmark Datasets (BEIR + Curated Corpus) | Accepted | 2026-09-13 |
 
 ## ADR Lifecycle
 ```

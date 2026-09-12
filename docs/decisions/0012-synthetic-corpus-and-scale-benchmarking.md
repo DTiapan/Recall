@@ -1,7 +1,7 @@
 # ADR-012: Synthetic Enterprise Corpus Generation and Multi-Scale Stress Benchmarking (10K to 10M Docs)
 
 ## Status
-Accepted
+Accepted (synthetic generator deferred; see [ADR-013](0013-real-world-benchmark-datasets.md) for the primary real-dataset benchmark path)
 
 ## Date
 2026-09-13
