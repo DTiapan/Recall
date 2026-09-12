@@ -10,6 +10,7 @@ This directory maintains the Architecture Decision Records for the Production RA
 | [ADR-002](0002-production-rag-architecture.md) | Production RAG Architecture, Query Transformation & Security | Accepted | 2026-09-13 |
 | [ADR-003](0003-ingestion-and-chunking-strategy.md) | Ingestion Preprocessing, Deduplication & Chunking Strategy | Accepted | 2026-09-13 |
 | [ADR-004](0004-format-aware-chunking-adapters.md) | Format-Aware Chunking Adapters & Structural Ingestion Engine | Accepted | 2026-09-13 |
+| [ADR-005](0005-turnkey-enterprise-rag-platform.md) | Turnkey Enterprise Architecture, Dual-Mode Engine & OSS Stack | Accepted | 2026-09-13 |
 | *Upcoming* | Vector Store Selection & 10M Quantization Tuning (Phase 2) | Proposed | Pending |
 
 ## ADR Lifecycle
