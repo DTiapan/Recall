@@ -2,26 +2,28 @@
 
 [![Python Version](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Architecture: ADRs](https://img.shields.io/badge/architecture-ADRs%20recorded-blue.svg)](docs/decisions/)
-[![Tests](https://img.shields.io/badge/tests-29%20passed-brightgreen.svg)]()
+[![Architecture: ADRs](https://img.shields.io/badge/architecture-11%20ADRs%20recorded-blue.svg)](docs/decisions/)
+[![Tests](https://img.shields.io/badge/tests-66%20passed-brightgreen.svg)]()
 [![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
-> **Recall** is a turnkey, open-source Retrieval-Augmented Generation (RAG) platform that deploys in one click with zero setup—providing self-hosted hybrid search, table-aware structural chunking, and dual-mode local (Ollama) and cloud (LiteLLM) synthesis for enterprise knowledge bases scaling from 1,000 to 10M+ documents.
+> **Recall** is a turnkey, open-source Retrieval-Augmented Generation (RAG) platform that deploys in one click with zero setup—providing self-hosted hybrid search, table-aware structural chunking, cross-encoder reranking, and dual-mode local (Ollama) and cloud (LiteLLM) synthesis for enterprise knowledge bases scaling from 1,000 to 10M+ documents.
 
 ---
 
 ## Key Highlights
 
-- **Zero-Setup Barrier**: Single-command deployment (`docker compose up` or `recall serve`). No complex orchestration or component sprawl.
+- **Zero-Setup Barrier**: Ready out of the box via single-command deployment (`docker compose up` or `recall serve`). No component sprawl or glue scripts required.
+- **Embedded Web UI**: Out-of-the-box modern dark-mode chat interface with drag-and-drop file ingestion and clickable, page-specific citation popovers.
 - **Dual-Mode Operation**:
-  - **Local Mode**: 100% air-gapped, zero-data-leakage execution using [FastEmbed](https://github.com/qdrant/fastembed) (ONNX CPU/GPU) and [Ollama](https://github.com/ollama/ollama) (Llama-3/Mistral).
-  - **Cloud Mode**: High-capability cloud synthesis using [LiteLLM](https://github.com/BerriAI/litellm) (OpenAI, Anthropic, Gemini) with zero local GPU requirements.
-- **Enterprise Precision**:
+  - **Local Mode**: 100% air-gapped, zero-data-leakage execution using [FastEmbed](https://github.com/qdrant/fastembed) (ONNX CPU), [FlashRank](https://github.com/PrithivirajDamodaran/FlashRank) local cross-encoders, and [Ollama](https://github.com/ollama/ollama) (Llama 3.2 / Mistral).
+  - **Cloud Mode**: High-capability cloud synthesis using [LiteLLM](https://github.com/BerriAI/litellm) (OpenAI, Anthropic, Gemini, Cohere) with zero local GPU requirements.
+- **Enterprise Scale & Precision**:
   - **Structural Format Adapters**: Native ingestion for PDF, Microsoft Word (`.docx`), Markdown, and plain text.
   - **Table Topology Preservation**: Markdown table serialization that retains column headers across sub-chunks without severing numbers.
   - **Deduplication Gate**: 64-bit `xxhash` exact deduplication (<100MB RAM for 10M docs) + MinHash LSH for near-duplicate filtering.
-  - **Citation Attribution**: Full provenance tracking with exact page numbers, section heading breadcrumbs, and document timestamps.
-  - **Prompt Injection Defense**: Untrusted context sandboxed inside bounded XML tags (`<context_document>`).
+  - **Concurrent Hybrid Retrieval**: Dense HNSW vector similarity in Qdrant fused with BM25+ lexical search via Reciprocal Rank Fusion (RRF, $k=60$) with circuit breaker fallbacks.
+  - **Cross-Encoder Reranking & Compression**: Zero-GPU ONNX cross-encoders with extractive sentence reduction to eliminate prompt bloat and prevent "Lost in the Middle" attention failures.
+  - **Context Sandboxing & Citation Verification**: Untrusted document passages sandboxed in XML tags (`<context_document>`) with strict inline citation verification (`[Doc X, p. Y]`).
 
 ---
 
@@ -31,19 +33,24 @@
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                          RECALL PLATFORM ARCHITECTURE                       │
 │                                                                             │
-│  [Minimal Web UI]              [REST API (FastAPI)]         [CLI Tooling]   │
-│  - Drag & Drop Ingest          - /v1/ingest                 - recall serve  │
-│  - Cited Chat Stream           - /v1/query                  - recall ingest │
-│  - Collection Manager          - /v1/health                                 │
+│  [Embedded Web UI]             [FastAPI REST Engine]         [Recall CLI]   │
+│  - Drag & Drop Ingest          - POST /v1/ingest             - recall serve │
+│  - Verified Citation Pills     - POST /v1/search             - recall ingest│
+│  - Real-time Diagnostics       - POST /v1/chat               - recall query │
 │         │                               │                           │       │
 │         └───────────────────────┬───────┴───────────────────────────┘       │
 │                                 ▼                                           │
 │  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                     RECALL CORE ORCHESTRATION ENGINE                  │  │
-│  │  - Unified Configuration Engine (.env + config.yaml)                  │  │
-│  │  - Structural Ingestion Engine (Adapters, Table Formatter, Dedup)     │  │
-│  │  - Hybrid Search & Fusion Engine (RRF, Circuit Breakers)              │  │
-│  │  - Context Sandboxing & Citation Attribution Guardrails               │  │
+│  │                     RECALL CORE ORCHESTRATION PIPELINE                │  │
+│  │                                                                       │  │
+│  │  1. Format Ingestion Engine (PDF, DOCX, Markdown, Table Formatter)    │  │
+│  │  2. Exact & Near Deduplication (xxhash + MinHash LSH)                 │  │
+│  │  3. Concurrent Hybrid Retrieval (Dense HNSW + BM25+ Sparse)           │  │
+│  │  4. Reciprocal Rank Fusion (RRF, k=60) with Dense Circuit Breakers    │  │
+│  │  5. Cross-Encoder Reranking (FlashRank ONNX) + Threshold Gating       │  │
+│  │  6. Extractive Context Compression (Saliency Extractor)               │  │
+│  │  7. XML Context Sandboxing & Prompt Injection Defense                 │  │
+│  │  8. LiteLLM Universal Synthesis + Grounded Citation Verification      │  │
 │  └───────────────────┬───────────────────────────────┬───────────────────┘  │
 │                      │                               │                      │
 │                      ▼                               ▼                      │
@@ -51,11 +58,11 @@
 │  │      STORAGE & VECTOR ENGINE    │   │        LLM & EMBEDDING GATEWAY  │  │
 │  │      (Qdrant Unified OSS)       │   │        (LiteLLM + FastEmbed)    │  │
 │  │  - Dense HNSW Index             │   │  [Local Mode]:                  │  │
-│  │  - Native Sparse (BM25) Vector  │   │  - FastEmbed (ONNX CPU/GPU)     │  │
-│  │  - Scalar Quantization (INT8)   │   │  - Ollama (Llama-3/Mistral)     │  │
-│  │  - Payload Filtering & Tenancy  │   │  [Cloud Mode]:                  │  │
-│  │                                 │   │  - LiteLLM (OpenAI, Anthropic,  │  │
-│  │                                 │   │    Gemini, Azure, Bedrock)      │  │
+│  │  - Native Sparse BM25+ Index    │   │  - FastEmbed ONNX (bge-small)   │  │
+│  │  - Scalar Quantization (INT8)   │   │  - FlashRank ONNX Reranker      │  │
+│  │  - Multi-tenant Collections     │   │  - Ollama (Llama-3 / Mistral)   │  │
+│  │                                 │   │  [Cloud Mode]:                  │  │
+│  │                                 │   │  - OpenAI, Claude 3.5, Gemini   │  │
 │  └─────────────────────────────────┘   └─────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -64,72 +71,96 @@
 
 ## Quickstart
 
-### 1. Installation
+### Option A: Turnkey Single-Command Docker Deployment (Recommended)
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/recall.git
-cd recall
+git clone https://github.com/DTiapan/Recall.git
+cd Recall
 
-# Create virtual environment and install with format support
-uv venv
-source .venv/bin/activate
-uv pip install -e ".[dev,formats]"
+# Launch complete stack (FastAPI + Qdrant + Web UI)
+docker compose up -d
+
+# Open the Web UI in your browser
+open http://localhost:8000
 ```
 
-### 2. Configuration
-
-Recall uses a two-tier configuration hierarchy:
-- **`.env`**: Secrets, API keys, ports, and deployment mode (`RAG_MODE=cloud` or `local`).
-- **`config.yaml`**: Pipeline tuning parameters (chunk size, overlap, hybrid weights, HNSW graph parameters).
+### Option B: Local Python CLI
 
 ```bash
+# Clone and enter directory
+git clone https://github.com/DTiapan/Recall.git
+cd Recall
+
+# Create virtual environment and install
+uv venv
+source .venv/bin/activate
+uv pip install -e ".[formats]"
+
+# Copy environment configuration
 cp .env.example .env
-# Edit .env with your LLM API keys (or leave default for local mode)
-```
 
-### 3. Programmatic Usage
-
-```python
-from pathlib import Path
-from recall.adapters import ChunkingAdapterRegistry
-from recall.core.config import load_config
-from recall.core.models import IngestConfig
-
-# Load unified configuration (.env + config.yaml)
-config = load_config()
-
-# Initialize format-aware adapter registry
-registry = ChunkingAdapterRegistry()
-
-# Ingest and structure any document (PDF, Word, Markdown, Text)
-chunks = registry.process(
-    file_path=Path("quarterly_financial_report.pdf"),
-    config=IngestConfig(chunk_size=500, chunk_overlap=50),
-)
-
-for chunk in chunks:
-    print(f"[{chunk.metadata.content_type.upper()}] Page {chunk.metadata.page_number} | Tokens: {chunk.metadata.token_count}")
-    print(chunk.contextualized_text[:120], "...\n")
+# Start the server and embedded Web UI
+recall serve
 ```
 
 ---
 
-## Running Tests
+## Command-Line Interface (CLI)
+
+```bash
+# Start the API and UI server
+recall serve --host 0.0.0.0 --port 8000
+
+# Ingest any document into the active collection
+recall ingest path/to/document.pdf --collection documents
+
+# Query the pipeline directly from the terminal
+recall query "What are the production access requirements?"
+```
+
+---
+
+## REST API Reference
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/` | `GET` | Serves the interactive zero-dependency dark-mode Web UI |
+| `/v1/health` | `GET` | Healthcheck returning vector store connectivity and active dimensions |
+| `/v1/stats` | `GET` | Indexed document count and storage metrics |
+| `/v1/ingest` | `POST` | Upload document files (PDF, DOCX, MD, TXT) or raw text payloads |
+| `/v1/search` | `POST` | Concurrent hybrid search (Dense HNSW + BM25+) with RRF fusion |
+| `/v1/chat` | `POST` | End-to-end RAG synthesis returning verified citation audit trails |
+
+---
+
+## Architecture Decision Records (ADRs)
+
+Every architectural milestone in Recall is documented prior to implementation:
+
+| ADR | Title | Status |
+|---|---|---|
+| [ADR-001](docs/decisions/0001-record-architecture-decisions.md) | Record Architecture Decisions | Accepted |
+| [ADR-002](docs/decisions/0002-production-rag-architecture.md) | Production RAG Architecture and Technology Stack | Accepted |
+| [ADR-003](docs/decisions/0003-ingestion-and-chunking-strategy.md) | Ingestion and Structural Chunking Strategy | Accepted |
+| [ADR-004](docs/decisions/0004-format-aware-chunking-adapters.md) | Format-Aware Chunking Adapters and Table Serialization | Accepted |
+| [ADR-005](docs/decisions/0005-turnkey-enterprise-rag-platform.md) | Turnkey Enterprise RAG Platform Positioning and Brand | Accepted |
+| [ADR-006](docs/decisions/0006-vector-storage-and-indexing.md) | Production Qdrant Storage, INT8 Quantization, and FastEmbed | Accepted |
+| [ADR-007](docs/decisions/0007-hybrid-retrieval-and-fusion.md) | Concurrent Hybrid Retrieval, Reciprocal Rank Fusion, and Circuit Breakers | Accepted |
+| [ADR-008](docs/decisions/0008-reranking-and-quality-filtering.md) | Cross-Encoder Reranking, Threshold Gating, and Context Compression | Accepted |
+| [ADR-009](docs/decisions/0009-synthesis-and-guardrails.md) | Context Sandboxing, Injection Defense, LiteLLM, and Citation Verification | Accepted |
+| [ADR-010](docs/decisions/0010-turnkey-rest-api-and-web-ui.md) | Turnkey REST API, Embedded Web UI, and CLI Tooling | Accepted |
+| [ADR-011](docs/decisions/0011-packaging-and-production-hardening.md) | Multi-Stage Hardened Dockerfile and Compose Orchestration | Accepted |
+
+---
+
+## Running the Test Suite
 
 All changes are governed by strict test-driven development:
 
 ```bash
 pytest tests/ -v
 ```
-
----
-
-## Engineering Discipline & Standards
-
-- **Architecture Decision Records (ADRs)**: All architectural forks are documented in [`docs/decisions/`](docs/decisions/).
-- **Binding Constraints**: Quality floors and zero-drift mandates are recorded in [`CONSTRAINTS.md`](CONSTRAINTS.md).
-- **Agent Skill Workflows**: Enforced via [`AGENTS.md`](AGENTS.md) utilizing `addyosmani/agent-skills`.
 
 ---
 
