@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Recall - The Open-Source, Turnkey Enterprise Retrieval-Augmented Generation (RAG) Platform. Hybrid search, cross-encoder reranking, and citation-backed synthesis.">
+    <title>Recall | Turnkey Enterprise RAG Platform</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="dark-theme">
+    <div class="app-layout">
+        <!-- Sidebar: Upload & Diagnostics -->
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="logo-icon">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                        <polyline points="2 17 12 22 22 17"></polyline>
+                        <polyline points="2 12 12 17 22 12"></polyline>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="brand-title">Recall</h1>
+                    <span class="brand-badge">Enterprise RAG</span>
+                </div>
+            </div>
+
+            <!-- Ingestion Zone -->
+            <section class="panel-section">
+                <h2 class="section-label">Document Ingestion</h2>
+                <div id="drop-zone" class="drop-zone">
+                    <div class="drop-zone-icon">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="17 8 12 3 7 8"></polyline>
+                            <line x1="12" y1="3" x2="12" y2="15"></line>
+                        </svg>
+                    </div>
+                    <p class="drop-text">Drag & drop documents here</p>
+                    <span class="drop-subtext">PDF, DOCX, Markdown, Text, JSON</span>
+                    <input type="file" id="file-input" class="hidden-input" multiple accept=".pdf,.docx,.md,.txt,.json">
+                    <button type="button" id="browse-btn" class="btn btn-secondary btn-sm">Select Files</button>
+                </div>
+                <div id="upload-status" class="status-indicator hidden"></div>
+            </section>
+
+            <!-- Diagnostic Stats -->
+            <section class="panel-section stats-panel">
+                <h2 class="section-label">System Architecture</h2>
+                <div class="stat-card">
+                    <div class="stat-row">
+                        <span class="stat-name">Dense Vectors</span>
+                        <span class="stat-val" id="stat-dense">HNSW INT8 (384d)</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-name">Sparse Index</span>
+                        <span class="stat-val" id="stat-sparse">BM25+ (Okapi Lower-Bound)</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-name">Fusion</span>
+                        <span class="stat-val" id="stat-fusion">RRF (k=60)</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-name">Reranker</span>
+                        <span class="stat-val" id="stat-rerank">FlashRank ONNX</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-name">Indexed Chunks</span>
+                        <span class="stat-val highlight" id="stat-chunks">0 chunks</span>
+                    </div>
+                </div>
+            </section>
+        </aside>
+
+        <!-- Main Chat Area -->
+        <main class="chat-container">
+            <header class="chat-header">
+                <div class="header-status">
+                    <span class="pulse-dot"></span>
+                    <span class="header-status-text" id="engine-status">Recall Engine Active</span>
+                </div>
+                <div class="header-actions">
+                    <button id="clear-chat-btn" class="btn btn-ghost btn-sm" title="Clear conversation">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                        Clear Chat
+                    </button>
+                </div>
+            </header>
+
+            <!-- Message Stream -->
+            <div id="message-list" class="message-list">
+                <div class="welcome-card">
+                    <div class="welcome-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <path d="M12 16v-4"></path>
+                            <path d="M12 8h.01"></path>
+                        </svg>
+                    </div>
+                    <h2>Ask Recall Anything Across Your Enterprise Documents</h2>
+                    <p>Every answer is synthesized using concurrent hybrid search (Dense HNSW + BM25+), deep cross-encoder reranking, and citation attribution with exact document citations.</p>
+                </div>
+            </div>
+
+            <!-- Input Bar -->
+            <footer class="chat-footer">
+                <form id="query-form" class="input-form">
+                    <input 
+                        type="text" 
+                        id="query-input" 
+                        class="query-input" 
+                        placeholder="Ask a question about your indexed knowledge..." 
+                        autocomplete="off"
+                        required
+                    >
+                    <button type="submit" id="send-btn" class="btn btn-primary send-btn" aria-label="Send Query">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        </svg>
+                    </button>
+                </form>
+            </footer>
+        </main>
+
+        <!-- Citation Detail Drawer Modal -->
+        <div id="citation-modal" class="modal-overlay hidden">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <h3 id="modal-title">Citation Grounding Details</h3>
+                    <button id="close-modal-btn" class="close-btn" aria-label="Close modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="modal-meta-row">
+                        <span class="meta-label">Source URI:</span>
+                        <span id="modal-source" class="meta-value font-mono"></span>
+                    </div>
+                    <div class="modal-meta-row" id="modal-page-row">
+                        <span class="meta-label">Page Number:</span>
+                        <span id="modal-page" class="meta-value font-mono"></span>
+                    </div>
+                    <div class="modal-meta-row">
+                        <span class="meta-label">Chunk ID:</span>
+                        <span id="modal-chunk-id" class="meta-value font-mono"></span>
+                    </div>
+                    <div class="modal-snippet-box">
+                        <span class="meta-label">Supporting Evidence Snippet:</span>
+                        <p id="modal-snippet" class="modal-snippet"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

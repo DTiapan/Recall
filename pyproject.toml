@@ -35,7 +35,14 @@ dependencies = [
     "rank-bm25>=0.2.2",
     "flashrank>=0.2.10",
     "litellm>=1.40.0",
+    "fastapi>=0.111.0",
+    "uvicorn>=0.30.0",
+    "python-multipart>=0.0.9",
 ]
+
+[project.scripts]
+recall = "recall.cli:main"
+
 
 [project.optional-dependencies]
 pdf = [
