@@ -208,6 +208,32 @@ export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 
 ---
 
+## Built with open tooling
+
+Recall is the **product** in a three-repo stack for serious GenAI engineering:
+
+| Project | Role |
+|---------|------|
+| **Recall** (this repo) | Production RAG: ingest, hybrid retrieval, real BEIR evals |
+| [Craft](https://github.com/DTiapan/craft) | Workflow router + [engineering ledger](docs/engineering-ledger/INDEX.md) (decisions, lessons, phase gates) |
+| [Battery](https://github.com/DTiapan/battery) | Local MCP agent memory (hybrid search, `BATTERY.md` in git) |
+
+Craft is adopted in this repo (`docs/engineering-ledger/`). Battery complements agent session memory while Recall handles document retrieval.
+
+---
+
+## Author
+
+**Ajas Bakran** — AI systems engineer focused on agent evaluation, context engineering, and production reliability.
+
+- GitHub: [github.com/DTiapan](https://github.com/DTiapan)
+- LinkedIn: [linkedin.com/in/ajasbakran](https://linkedin.com/in/ajasbakran)
+- Newsletter: [growithai.substack.com](https://growithai.substack.com/)
+
+Advisory and consulting on AI agent reliability, memory architectures, MCP integrations, and production RAG — [get in touch](mailto:bakran.ajas@gmail.com).
+
+---
+
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.
