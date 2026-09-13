@@ -1,9 +1,9 @@
 # Recall: The Open-Source, Turnkey Enterprise RAG Platform
 
+[![CI](https://github.com/DTiapan/Recall/actions/workflows/ci.yml/badge.svg)](https://github.com/DTiapan/Recall/actions/workflows/ci.yml)
 [![Python Version](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Architecture: ADRs](https://img.shields.io/badge/architecture-13%20ADRs%20recorded-blue.svg)](docs/decisions/)
-[![Tests](https://img.shields.io/badge/tests-109%20passed-brightgreen.svg)]()
 [![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
 > **Recall** is a turnkey, open-source Retrieval-Augmented Generation (RAG) platform that deploys in one click with zero setup—providing self-hosted hybrid search, table-aware structural chunking, cross-encoder reranking, and dual-mode local (Ollama) and cloud (LiteLLM) synthesis for enterprise knowledge bases scaling from 1,000 to 10M+ documents.
@@ -199,7 +199,23 @@ Every architectural milestone in Recall is documented prior to implementation:
 
 ## Running the Test Suite
 
-All changes are governed by strict test-driven development:
+CI runs on every push/PR to `main` — [view workflow runs](https://github.com/DTiapan/Recall/actions/workflows/ci.yml) (badge at top of this README).
+
+**What CI runs** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)):
+
+| Step | Gate |
+|------|------|
+| `pytest` | 113 unit/integration tests (smoke excluded) |
+| `recall benchmark --dataset sample --in-memory` | HitRate@5 ≥ **90%**, MRR ≥ **0.60** |
+
+Reproduce the retrieval gate locally:
+
+```bash
+pip install -e ".[formats,dev,benchmark]"
+RAG_ENV=test RAG_MODE=local pytest -q
+RAG_ENV=test RAG_MODE=local recall benchmark --dataset sample --in-memory \
+  --min-hit-rate 0.90 --min-mrr 0.60
+```
 
 ```bash
 # Fast parallel unit/integration suite (smoke tests excluded by default)
