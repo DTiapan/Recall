@@ -36,3 +36,11 @@ This repository strictly enforces `addyosmani/agent-skills`. See [CONSTRAINTS.md
   - TDD Verification: All code changes must have tests. 100% of tests must pass on `.venv` before commit.
   - Quality Bar Preservation: Never skip tests, weaken assertions, or bypass errors to achieve green status.
 
+## Craft (orchestration + ledger)
+
+- Non-trivial work: read `docs/engineering-ledger/INDEX.md` first.
+- Route phases via `using-craft` skill (reference-only — do not copy Addy skills into this repo).
+- Append DR/LL/INDEX before ending substantive sessions.
+- Irreversible forks: ADR in `docs/decisions/` per `documentation-and-adrs`.
+- Project manifest: [craft.project.yaml](craft.project.yaml)
+
