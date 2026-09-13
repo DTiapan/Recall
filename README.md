@@ -146,6 +146,12 @@ RAG_MODE=local QDRANT_URL=:memory: recall benchmark --dataset sample
 # Standard IR benchmark (downloads ~2.7 MB on first run)
 uv pip install -e ".[benchmark]"
 RAG_MODE=local QDRANT_URL=:memory: recall benchmark --dataset beir:scifact --limit 500
+
+# Scale tier (batched embed + bulk upsert, batch_size=128)
+RAG_MODE=local QDRANT_URL=:memory: recall benchmark --dataset beir:fiqa --scale 10k --batch-size 128
+
+# High-throughput scale stress (100k–10M index/latency, mock embeddings — not IR quality)
+RAG_MODE=local QDRANT_URL=:memory: recall benchmark --dataset beir:fiqa --scale 100k --fast
 ```
 
 ---

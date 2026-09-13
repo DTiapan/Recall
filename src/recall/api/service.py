@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from collections.abc import Callable
 from typing import Any
 
 from recall.adapters import ChunkingAdapterRegistry
@@ -189,6 +190,62 @@ class RAGService:
         if not self.use_qdrant_sparse and self._legacy_sparse_indexes is not None:
             self._legacy_sparse_indexes.index(collection_name, chunks)
 
+    def build_text_chunk(
+        self,
+        text: str,
+        source_uri: str,
+        doc_id: str | None = None,
+        chunk_index: int = 0,
+    ) -> Chunk:
+        """Builds a single-chunk document payload without embedding or indexing."""
+        resolved_doc_id = doc_id or f"doc_{hash(source_uri) % 1000000:06d}"
+        return Chunk(
+            id=f"text_{resolved_doc_id}_{chunk_index}",
+            text=text,
+            metadata=ChunkMetadata(
+                doc_id=resolved_doc_id,
+                chunk_index=chunk_index,
+                source_uri=source_uri,
+            ),
+        )
+
+    def prepare_file_chunks(self, file_path: Path) -> list[Chunk]:
+        """Parses and chunks a file without embedding or indexing."""
+        ingest_config = IngestConfig(
+            chunk_size=self.config.pipeline.ingest.chunk_size,
+            chunk_overlap=self.config.pipeline.ingest.chunk_overlap,
+            enable_deduplication=self.config.pipeline.ingest.enable_deduplication,
+        )
+        return self.adapter_registry.process(file_path, config=ingest_config)
+
+    async def ingest_chunks_batched(
+        self,
+        chunks: list[Chunk],
+        collection_name: str | None = None,
+        batch_size: int = 128,
+        on_batch: Callable[[int, int], None] | None = None,
+    ) -> int:
+        """Embed and upsert chunks in vectorized micro-batches for high-throughput ingest."""
+        col = collection_name or self.default_collection
+        with trace_span(
+            _tracer,
+            "ingest.batch",
+            {"collection.name": col, "chunk.count": len(chunks), "batch.size": batch_size},
+        ):
+            self._ensure_collection(col)
+            if not chunks:
+                return 0
+
+            total = 0
+            for start in range(0, len(chunks), batch_size):
+                batch = chunks[start : start + batch_size]
+                self._attach_embeddings(batch)
+                total += self.vector_store.upsert(col, batch)
+                self._index_sparse_legacy(col, batch)
+                if on_batch is not None:
+                    on_batch(min(start + len(batch), len(chunks)), len(chunks))
+            return total
+
     async def ingest_file(
         self,
         file_path: Path,
@@ -217,11 +274,7 @@ class RAGService:
             if not chunks:
                 return 0
 
-            self._attach_embeddings(chunks)
-
-            upserted = self.vector_store.upsert(col, chunks)
-            self._index_sparse_legacy(col, chunks)
-            return upserted
+            return await self.ingest_chunks_batched(chunks, collection_name=col)
 
     async def ingest_text(
         self,
@@ -244,20 +297,8 @@ class RAGService:
                 logger.info("Skipping duplicate text ingest: %s", source_uri)
                 return 0
 
-            resolved_doc_id = doc_id or f"doc_{hash(source_uri) % 1000000:06d}"
-            chunk = Chunk(
-                id=f"text_{hash(text) % 10000000:07d}",
-                text=text,
-                metadata=ChunkMetadata(
-                    doc_id=resolved_doc_id,
-                    chunk_index=0,
-                    source_uri=source_uri,
-                ),
-            )
-            self._attach_embeddings([chunk])
-
-            self.vector_store.upsert(col, [chunk])
-            self._index_sparse_legacy(col, [chunk])
+            chunk = self.build_text_chunk(text=text, source_uri=source_uri, doc_id=doc_id)
+            await self.ingest_chunks_batched([chunk], collection_name=col)
             return 1
 
     def sparse_chunk_count(self, collection_name: str) -> int:

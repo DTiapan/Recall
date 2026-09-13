@@ -33,6 +33,13 @@ def test_resolve_dataset_sample():
     assert len(corpus.documents) >= 3
 
 
+def test_scale_to_limit_and_beir_name_suffix():
+    from recall.eval.retrieval_benchmark import _scale_to_limit
+
+    assert _scale_to_limit("10k") == 10_000
+    assert _scale_to_limit("100k") == 100_000
+
+
 def test_beir_doc_id_preserved_through_ingest_metadata():
     from recall.eval.retrieval_benchmark import _is_hit
     from recall.eval.datasets.models import BenchmarkQuery

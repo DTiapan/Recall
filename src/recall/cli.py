@@ -73,6 +73,23 @@ def main() -> None:
         default=None,
         help="Optional path to write markdown benchmark report",
     )
+    benchmark_parser.add_argument(
+        "--query-limit",
+        type=int,
+        default=None,
+        help="Maximum labeled queries to evaluate (BEIR datasets, default: 50)",
+    )
+    benchmark_parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=128,
+        help="Embedding and Qdrant upsert batch size (default: 128)",
+    )
+    benchmark_parser.add_argument(
+        "--fast",
+        action="store_true",
+        help="High-throughput scale mode: mock embeddings for 100k–10M index/latency stress tests",
+    )
 
     args = parser.parse_args()
 
@@ -119,16 +136,43 @@ def main() -> None:
             dataset_path=dataset_path,
             limit=args.limit,
             scale=args.scale,
+            query_limit=args.query_limit,
         )
 
         async def _run_benchmark():
+            from recall.embeddings import MockEmbeddingProvider, MockSparseEmbeddingProvider
+            from recall.embeddings.fastembed_provider import FastEmbedProvider
+            from recall.embeddings.fastembed_sparse_provider import FastEmbedSparseProvider
+
             config = load_config()
-            if config.env.rag_env != "test":
-                print("Tip: set RAG_ENV=test for fast local mock-embedding benchmarks.")
-            service = RAGService(default_collection=args.collection)
+            if args.fast:
+                print(
+                    "Fast scale mode: using lightweight mock embeddings (index/latency stress, not IR quality).",
+                    flush=True,
+                )
+                service = RAGService(
+                    embedding_provider=MockEmbeddingProvider(dimensions=384),
+                    sparse_embedder=MockSparseEmbeddingProvider(),
+                    default_collection=args.collection,
+                )
+                if args.scale:
+                    corpus.name = f"{corpus.name}+fast"
+            else:
+                if config.env.rag_env != "test":
+                    print("Tip: set RAG_ENV=test for mock-embedding unit benchmarks.", flush=True)
+                service = RAGService(default_collection=args.collection)
+                if isinstance(service.embedder, FastEmbedProvider):
+                    service.embedder.batch_size = args.batch_size
+                if isinstance(service.sparse_embedder, FastEmbedSparseProvider):
+                    service.sparse_embedder.batch_size = args.batch_size
+
             runner = RetrievalBenchmarkRunner(service=service)
-            report = await runner.run(corpus=corpus, collection_name=args.collection)
-            print(report.to_markdown())
+            report = await runner.run(
+                corpus=corpus,
+                collection_name=args.collection,
+                batch_size=args.batch_size,
+            )
+            print(report.to_markdown(), flush=True)
             if args.output:
                 output_path = Path(args.output)
                 output_path.write_text(report.to_markdown(), encoding="utf-8")
