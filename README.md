@@ -26,6 +26,7 @@
   - **Concurrent Hybrid Retrieval**: Dense HNSW vector similarity in Qdrant fused with BM25+ lexical search via Reciprocal Rank Fusion (RRF, $k=60$) with circuit breaker fallbacks.
   - **Cross-Encoder Reranking & Compression**: Zero-GPU ONNX cross-encoders with extractive sentence reduction to eliminate prompt bloat and prevent "Lost in the Middle" attention failures.
   - **Context Sandboxing & Citation Verification**: Untrusted document passages sandboxed in XML tags (`<context_document>`) with strict inline citation verification (`[Doc X, p. Y]`).
+- **Built-in Observability**: [OpenTelemetry](https://opentelemetry.io/) tracing across ingest → retrieve → rerank → compress → synthesis; per-stage latency in API responses and the Web UI; optional OTLP export to Jaeger, Grafana Tempo, or any OTLP backend.
 
 ---
 
@@ -42,6 +43,7 @@
 | **CLI** | `recall serve`, `ingest`, `query`, `benchmark` |
 | **Packaging** | Docker Compose, `.env` + `config.yaml` |
 | **Benchmarks** | Real BEIR evals: sample (5 docs), SciFact@500, FiQA@500, **FiQA@10k** with published metrics |
+| **Observability** | OTel spans on pipeline stages; `timing` in `/v1/chat`; UI latency footer; `tracing_enabled` on `/v1/health`; OTLP via `OTEL_EXPORTER_OTLP_ENDPOINT` |
 | **CI** | 125 pytest tests + sample-corpus retrieval gate on every PR |
 
 **Largest validated scale (Sep 2026):** FiQA @10,000 documents — **73.8%** HitRate@5, **~11 min** batched ingest, **~15 GB** peak RSS on Apple Silicon CPU. See [benchmark results](#retrieval-benchmarks).
@@ -60,6 +62,7 @@
 | **512k** | EnterpriseRAG-Bench quality eval | Not integrated |
 | **1M** | Stress + memory profiling on cloud VM | Requires streaming ingest improvements |
 | **10M+** | Hyperscale soak (throughput, RSS, P95 latency) | [ADR-012](docs/decisions/0012-synthetic-corpus-and-scale-benchmarking.md) — synthetic streaming generator **not built** |
+| **Observability** | Prometheus RED metrics, bundled Jaeger/Grafana in Compose | Tracing + per-stage latency shipped; metrics/dashboards on roadmap |
 
 We do **not** claim 10M+ document production readiness until those tiers have published, reproducible benchmark reports. Full scale plan: [docs/benchmarks/README.md](docs/benchmarks/README.md).
 
@@ -250,7 +253,37 @@ Deeper write-ups: [retrieval quality investigation](docs/benchmarks/retrieval-qu
 | `/v1/stats` | `GET` | Indexed chunk counts and storage metrics |
 | `/v1/ingest` | `POST` | Upload files (PDF, DOCX, MD, TXT, JSON) or raw text |
 | `/v1/search` | `POST` | Hybrid search (dense + sparse) with RRF fusion |
-| `/v1/chat` | `POST` | Full RAG pipeline; optional `stream`, `model`, `rerank` |
+| `/v1/chat` | `POST` | Full RAG pipeline; optional `stream`, `model`, `rerank`; returns `timing` (retrieve / rerank / compress / synthesis ms) |
+
+---
+
+## Observability
+
+Recall instruments the full RAG pipeline so you can see *where time goes* — not just whether the answer was right.
+
+### Shipped today
+
+| Layer | What you get |
+|-------|----------------|
+| **OpenTelemetry tracing** | Spans on `ingest.*`, `retrieve.*`, `rerank`, `compress`, and `synthesis` (enabled by default in `config.yaml`) |
+| **Per-stage latency** | `timing` object on `/v1/chat` responses: `retrieve_ms`, `rerank_ms`, `compress_ms`, `synthesis_ms`, `total_ms` |
+| **Web UI** | Latency footer on every answer (same breakdown as the API) |
+| **Health probe** | `GET /v1/health` → `tracing_enabled` |
+| **OTLP export** | Point `OTEL_EXPORTER_OTLP_ENDPOINT` at any OTLP HTTP collector (Jaeger, Grafana Tempo, Datadog Agent, etc.) |
+
+```bash
+# Optional: export traces to a local OTLP collector (e.g. Jaeger on :4318)
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+recall serve
+```
+
+Toggle tracing in [`config.yaml`](config.yaml) (`observability.enabled`) or disable via `OTEL_SDK_DISABLED=true` in [`.env.example`](.env.example).
+
+### Roadmap
+
+- Prometheus RED metrics (request rate, errors, duration histograms)
+- Pre-wired Jaeger/Grafana services in `docker compose`
+- Structured JSON logging (stdlib `logging` today)
 
 ---
 
@@ -304,8 +337,8 @@ pytest
 # Docker deployment smoke test (requires Docker)
 pytest -m smoke -n 0 -v
 
-# Export traces to an OTLP collector (optional)
-export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+# Observability spans (see Observability section above)
+pytest tests/test_observability.py -n 0 -v
 ```
 
 ---
