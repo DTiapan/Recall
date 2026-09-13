@@ -1,7 +1,7 @@
 # ADR-012: Synthetic Enterprise Corpus Generation and Multi-Scale Stress Benchmarking (10K to 10M Docs)
 
 ## Status
-Accepted (synthetic generator deferred; see [ADR-013](0013-real-world-benchmark-datasets.md) for the primary real-dataset benchmark path)
+Accepted — **partially implemented** (CLI `--scale` flags and `--fast` stress mode exist; synthetic streaming generator **not built**; largest **published** real-embedding result is FiQA@10k, Sep 2026). See [benchmarks/README.md](../benchmarks/README.md) for validated vs planned tiers.
 
 ## Date
 2026-09-13

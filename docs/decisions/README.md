@@ -2,6 +2,8 @@
 
 This directory maintains the Architecture Decision Records for the Production RAG project, following the [documentation-and-adrs](file:///.agents/skills/documentation-and-adrs/SKILL.md) skill convention.
 
+**Scale language in ADRs:** References to 10M+ documents describe **design targets and rationale**, not validated production scale. Published benchmark evidence lives in [benchmarks/README.md](../benchmarks/README.md) (largest proven run: FiQA@10k, Sep 2026).
+
 ## Index of Decisions
 
 | ADR | Title | Status | Date |
@@ -17,7 +19,7 @@ This directory maintains the Architecture Decision Records for the Production RA
 | [ADR-009](0009-synthesis-and-guardrails.md) | Context Sandboxing, Injection Defense, LiteLLM & Citation Verification | Accepted | 2026-09-13 |
 | [ADR-010](0010-turnkey-rest-api-and-web-ui.md) | Turnkey REST API, Embedded Web UI & CLI Tooling | Accepted | 2026-09-13 |
 | [ADR-011](0011-packaging-and-production-hardening.md) | Multi-Stage Hardened Dockerfile & Compose Orchestration | Accepted | 2026-09-13 |
-| [ADR-012](0012-synthetic-corpus-and-scale-benchmarking.md) | Synthetic Enterprise Corpus Generation & Multi-Scale Stress Benchmarking | Accepted | 2026-09-13 |
+| [ADR-012](0012-synthetic-corpus-and-scale-benchmarking.md) | Synthetic Enterprise Corpus Generation & Multi-Scale Stress Benchmarking | Accepted (partial — generator not built) | 2026-09-13 |
 | [ADR-013](0013-real-world-benchmark-datasets.md) | Real-World Benchmark Datasets (BEIR + Curated Corpus) | Accepted | 2026-09-13 |
 
 ## ADR Lifecycle

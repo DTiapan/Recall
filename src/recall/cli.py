@@ -94,7 +94,7 @@ def main() -> None:
     benchmark_parser.add_argument(
         "--fast",
         action="store_true",
-        help="High-throughput scale mode: mock embeddings for 100k–10M index/latency stress tests",
+        help="Stress mode: mock embeddings for index/latency tests (100k+ planned; not IR quality)",
     )
     benchmark_parser.add_argument(
         "--index-dir",

@@ -1,9 +1,20 @@
 # Recall Benchmark Results & Scale Roadmap
 
-> **Purpose:** Credible, reproducible evidence for GitHub and enterprise evaluators — what we measured, what we fixed, and how we plan to stress-test to **10M+ documents**.
+> **Purpose:** Credible, reproducible evidence for GitHub and enterprise evaluators — **what we measured**, what we fixed, and **what we plan to prove next** (not what we claim today).
 
 **Last updated:** 2026-09-13  
 **Environment:** Apple Silicon Mac, `RAG_MODE=local`, FastEmbed `BAAI/bge-small-en-v1.5` (dense + sparse), disk-backed Qdrant (`~/.cache/recall/benchmark-indexes/`)
+
+### Current status (honest)
+
+| Tier | Scale | Mode | Status |
+|------|------:|------|--------|
+| **Proven** | 5 – **10,000** docs | Real FastEmbed ONNX | Published reports below (sample, SciFact@500, FiQA@500, FiQA@10k) |
+| **CLI ready, not reported** | 100k | `--fast` (mock embeddings) | Flags exist; no published `*-100k-fast.md` yet |
+| **Planned** | 512k | EnterpriseRAG-Bench | Not integrated |
+| **Planned** | 1M – **10M+** | `--fast` + streaming synthetic corpus | [ADR-012](../decisions/0012-synthetic-corpus-and-scale-benchmarking.md) — generator **not built**; do not claim until reproducible reports exist |
+
+**Largest validated run:** FiQA @10,000 documents — **73.8%** HitRate@5, **~11 min** ingest, **~15 GB** peak RSS.
 
 ---
 
@@ -92,9 +103,9 @@ Use `PYTHONUNBUFFERED=1` so phase/batch progress prints immediately.
 
 ---
 
-## Scale stress test roadmap (10k → 10M+)
+## Scale stress test roadmap (future targets)
 
-**Goal:** Prove the pipeline holds from SMB (10k) to hyperscale (10M+) on throughput, memory, and latency — without pretending a laptop can run 10M real ONNX embeddings overnight.
+**Goal (not yet achieved):** Prove the pipeline holds from SMB (10k, **done**) to hyperscale (10M+) on throughput, memory, and latency — without pretending a laptop can run 10M real ONNX embeddings overnight. **We have not run or published 100k+ stress results yet.**
 
 ### Two benchmark tiers (by design)
 
@@ -106,12 +117,13 @@ Use `PYTHONUNBUFFERED=1` so phase/batch progress prints immediately.
 `--fast` is intentional ([DR-002](../engineering-ledger/decisions.md)): it stress-tests **indexing, Qdrant, hybrid search, and latency percentiles** — not IR quality. See [ADR-012](../decisions/0012-synthetic-corpus-and-scale-benchmarking.md).
 
 ```bash
-# Stress tier examples (mock embeddings — index/latency only)
+# Stress tier examples (mock embeddings — index/latency only; reports not yet published)
+# Use beir:quora (~522k docs max) — FiQA caps at ~57k documents
 PYTHONUNBUFFERED=1 RAG_MODE=local QDRANT_URL=:memory: \
-  recall benchmark --dataset beir:fiqa --scale 100k --fast --batch-size 128
+  recall benchmark --dataset beir:quora --scale 100k --fast --batch-size 128
 
-PYTHONUNBUFFERED=1 RAG_MODE=local QDRANT_URL=:memory: \
-  recall benchmark --dataset beir:fiqa --scale 1m --fast --batch-size 512
+# 1m requires synthetic corpus or a dataset larger than any single BEIR split (not runnable today)
+# PYTHONUNBUFFERED=1 RAG_MODE=local recall benchmark --dataset beir:quora --scale 1m --fast --batch-size 512
 ```
 
 ### Recommended ladder
@@ -129,7 +141,7 @@ Bottlenecks today:
 
 1. **FastEmbed ONNX on CPU** — batched, but still ~5–7 chunks/sec at `batch_size=128`.
 2. ~~**In-memory Qdrant** — rebuild every run.~~ **Disk-backed benchmark indexes** (default) with manifest reuse; `--in-memory` for ephemeral runs.
-3. ~~**All chunks materialized in Python** before ingest~~ **Streaming micro-batch ingest** — chunk → embed → upsert without holding the full corpus in RAM.
+3. **BEIR corpora still load fully into Python memory** before ingest — per-document micro-batching helps embed/upsert, but 1M+ needs a true streaming corpus generator ([ADR-012](../decisions/0012-synthetic-corpus-and-scale-benchmarking.md), not built).
 
 Rough projection **without code changes**:
 
@@ -163,12 +175,12 @@ Rough projection **without code changes**:
 
 **Recommendation:** Treat the Mac as the **quality lab** (10k real). Use a **cloud VM with 64–128 GB RAM** and persistent Qdrant for **1M/10M `--fast` stress**, then add **streaming ingest** before claiming 10M end-to-end.
 
-### Engineering gaps before 10M claim
+### Engineering gaps before any hyperscale claim
 
-1. **Streaming benchmark ingest** — do not build `list[Chunk]` for entire corpus in memory.
-2. **Rerank regression on FiQA** — understand before publishing rerank numbers at scale.
-3. **RSS profiling** — 15 GB at 10k suggests memory work before 100k real.
-4. **Published stress reports** — one markdown per tier (`fiqa-100k-fast.md`, …) same as [fiqa-10k.md](fiqa-10k.md).
+1. **Streaming benchmark corpus** — ADR-012 synthetic generator; BEIR datasets cap below 1M docs (largest: BioASQ ~15M, Quora ~522k).
+2. **Published stress reports** — one markdown per tier (`quora-100k-fast.md`, …) same as [fiqa-10k.md](fiqa-10k.md).
+3. **RSS profiling** — 15 GB at 10k real suggests memory work before 100k real embeddings.
+4. **Rerank at scale** — FiQA@10k rerank within 1.7pp of hybrid; tune per domain before publishing at larger tiers.
 
 ---
 
@@ -177,9 +189,10 @@ Rough projection **without code changes**:
 | Report | Command | Status |
 |--------|---------|--------|
 | [fiqa-10k.md](fiqa-10k.md) | `recall benchmark --dataset beir:fiqa --scale 10k --batch-size 128` | ✅ Complete |
-| `fiqa-100k-fast.md` | `... --scale 100k --fast` | Planned |
-| `fiqa-1m-fast.md` | `... --scale 1m --fast` (cloud VM) | Planned |
-| `fiqa-10m-fast.md` | `... --scale 10m --fast` (cloud VM + streaming) | Planned |
+| `quora-100k-fast.md` | `beir:quora --scale 100k --fast` | Planned (CLI ready) |
+| `quora-500k-fast.md` | `beir:quora` (full corpus, no scale cap) | Planned |
+| `synthetic-1m-fast.md` | ADR-012 streaming generator + `--scale 1m --fast` | Blocked on generator |
+| `synthetic-10m-fast.md` | ADR-012 + cloud VM 128 GB+ | Blocked on generator |
 
 ---
 

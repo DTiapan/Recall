@@ -6,7 +6,7 @@
 [![Architecture: ADRs](https://img.shields.io/badge/architecture-14%20ADRs%20recorded-blue.svg)](docs/decisions/)
 [![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
-> **Recall** is a turnkey, open-source Retrieval-Augmented Generation (RAG) platform that deploys in one click with zero setup—providing self-hosted hybrid search, table-aware structural chunking, cross-encoder reranking, and dual-mode local (Ollama) and cloud (LiteLLM) synthesis for enterprise knowledge bases scaling from 1,000 to 10M+ documents.
+> **Recall** is a turnkey, open-source Retrieval-Augmented Generation (RAG) platform that deploys in one click with zero setup—providing self-hosted hybrid search, table-aware structural chunking, cross-encoder reranking, and dual-mode local (Ollama) and cloud (LiteLLM/OpenRouter) synthesis. **Proven today** on real BEIR benchmarks up to **10,000 documents** with published retrieval metrics; hyperscale stress testing (100k–10M+) is on the [roadmap](#status--roadmap).
 
 ![Recall Web UI — document library, model picker, streaming cited answers, and latency breakdown](docs/images/recall-web-ui.png)
 
@@ -19,13 +19,49 @@
 - **Dual-Mode Operation**:
   - **Local Mode**: 100% air-gapped, zero-data-leakage execution using [FastEmbed](https://github.com/qdrant/fastembed) (ONNX CPU), [FlashRank](https://github.com/PrithivirajDamodaran/FlashRank) local cross-encoders, and [Ollama](https://github.com/ollama/ollama) (Llama 3.2 / Mistral).
   - **Cloud Mode**: High-capability cloud synthesis using [LiteLLM](https://github.com/BerriAI/litellm) (OpenAI, Anthropic, Gemini, Cohere) with zero local GPU requirements.
-- **Enterprise Scale & Precision**:
+- **Enterprise-Grade Retrieval** (validated on real corpora, not synthetic templates):
   - **Structural Format Adapters**: Native ingestion for PDF, Microsoft Word (`.docx`), Markdown, and plain text.
   - **Table Topology Preservation**: Markdown table serialization that retains column headers across sub-chunks without severing numbers.
-  - **Deduplication Gate**: 64-bit `xxhash` exact deduplication (<100MB RAM for 10M docs) + MinHash LSH for near-duplicate filtering.
+  - **Deduplication Gate**: 64-bit `xxhash` exact deduplication + MinHash LSH for near-duplicate filtering.
   - **Concurrent Hybrid Retrieval**: Dense HNSW vector similarity in Qdrant fused with BM25+ lexical search via Reciprocal Rank Fusion (RRF, $k=60$) with circuit breaker fallbacks.
   - **Cross-Encoder Reranking & Compression**: Zero-GPU ONNX cross-encoders with extractive sentence reduction to eliminate prompt bloat and prevent "Lost in the Middle" attention failures.
   - **Context Sandboxing & Citation Verification**: Untrusted document passages sandboxed in XML tags (`<context_document>`) with strict inline citation verification (`[Doc X, p. Y]`).
+
+---
+
+## Status & Roadmap
+
+### Shipped today
+
+| Area | What works |
+|------|------------|
+| **Ingest** | PDF, DOCX, Markdown, TXT, JSON; table-aware chunking; exact + near dedup |
+| **Retrieval** | Hybrid dense + sparse in Qdrant, RRF fusion, optional FlashRank rerank |
+| **Synthesis** | LiteLLM (OpenRouter, OpenAI, Anthropic, …) or local Ollama; streaming SSE; citation verification |
+| **API & UI** | FastAPI REST, embedded web UI (upload, library, model picker, fast mode, latency breakdown) |
+| **CLI** | `recall serve`, `ingest`, `query`, `benchmark` |
+| **Packaging** | Docker Compose, `.env` + `config.yaml` |
+| **Benchmarks** | Real BEIR evals: sample (5 docs), SciFact@500, FiQA@500, **FiQA@10k** with published metrics |
+| **CI** | 125 pytest tests + sample-corpus retrieval gate on every PR |
+
+**Largest validated scale (Sep 2026):** FiQA @10,000 documents — **73.8%** HitRate@5, **~11 min** batched ingest, **~15 GB** peak RSS on Apple Silicon CPU. See [benchmark results](#retrieval-benchmarks).
+
+### In progress
+
+- **AP-003 Phase C** — reranker comparison, hybrid weight tuning, long-doc chunking ([attack plan](docs/engineering-ledger/attack-plans.md))
+- **100k stress tier** — `--fast` mock-embedding index/latency runs (CLI ready; published report pending)
+- **Retrieval quality** — root-cause analysis and fixes ([investigation](docs/benchmarks/retrieval-quality-investigation.md))
+
+### Roadmap (not yet proven)
+
+| Target | Goal | Status |
+|--------|------|--------|
+| **100k** | Index/latency stress (`--fast`) on larger BEIR corpora | CLI flags exist; no published report |
+| **512k** | EnterpriseRAG-Bench quality eval | Not integrated |
+| **1M** | Stress + memory profiling on cloud VM | Requires streaming ingest improvements |
+| **10M+** | Hyperscale soak (throughput, RSS, P95 latency) | [ADR-012](docs/decisions/0012-synthetic-corpus-and-scale-benchmarking.md) — synthetic streaming generator **not built** |
+
+We do **not** claim 10M+ document production readiness until those tiers have published, reproducible benchmark reports. Full scale plan: [docs/benchmarks/README.md](docs/benchmarks/README.md).
 
 ---
 
@@ -132,7 +168,7 @@ RAG_MODE=local recall benchmark --dataset beir:scifact --limit 500
 
 Recall evaluates hybrid retrieval on **real-world corpora** with human relevance labels — not synthetic templates. See [ADR-013](docs/decisions/0013-real-world-benchmark-datasets.md).
 
-**Full benchmark narrative** (expected results, improvements, scale roadmap to 10M+): [docs/benchmarks/README.md](docs/benchmarks/README.md).
+**Full benchmark narrative** (methodology, improvements, future scale targets): [docs/benchmarks/README.md](docs/benchmarks/README.md).
 
 **Environment:** `RAG_MODE=local`, FastEmbed `BAAI/bge-small-en-v1.5` (dense + sparse), disk-backed Qdrant (`~/.cache/recall/benchmark-indexes/`), Apple Silicon CPU (Sep 2026). Fair subsample: qrels-aware + `--subsample-seed 42` (not first-N dict order).
 
@@ -158,8 +194,8 @@ RAG_MODE=local recall benchmark --dataset beir:scifact --limit 500 --subsample-s
 # Scale tier (batched embed + bulk upsert; re-run skips ingest when manifest matches)
 RAG_MODE=local recall benchmark --dataset beir:fiqa --scale 10k --batch-size 128 --rerank --subsample-seed 42
 
-# High-throughput scale stress (100k–10M index/latency, mock embeddings — not IR quality)
-RAG_MODE=local recall benchmark --dataset beir:fiqa --scale 100k --fast --in-memory
+# Scale stress (CLI ready; published reports pending — mock embeddings, index/latency only)
+RAG_MODE=local recall benchmark --dataset beir:quora --scale 100k --fast --in-memory
 ```
 
 ---
@@ -197,11 +233,7 @@ Building a production RAG stack surfaced real failures long before “model qual
 - **Latency is pipeline-shaped** — typical chat: retrieve **&lt;200ms**, rerank **~1.5s**, LLM **~5–12s**; optimize the dominant stage first.
 - **Turnkey means operable UI** — admins need allowlisted models and doc lifecycle without editing `.env` per demo.
 
-### What we're working on next
-
-- **AP-003 Phase C** — reranker model comparison (BGE vs FlashRank), hybrid weight grid, long-doc chunking ([attack plan](docs/engineering-ledger/attack-plans.md))
-- **Scale** — 100k+ `--fast` stress tier; streaming ingest for 1M+ docs
-- **Ship** — green CI on `main`; optional OpenTelemetry export in production compose
+See [Status & Roadmap](#status--roadmap) for current work and future scale targets.
 
 Deeper write-ups: [retrieval quality investigation](docs/benchmarks/retrieval-quality-investigation.md) · [FiQA@10k rerank report](docs/benchmarks/fiqa-10k-ap003-rerank.md) · [all lessons](docs/engineering-ledger/lessons.md)
 

@@ -29,7 +29,7 @@ CI retrieval regression gate landed (`--min-hit-rate` / `--min-mrr` on `recall b
 **Phase:** Verify  
 **Summary:** Ran `recall benchmark --dataset beir:fiqa --scale 10k --batch-size 128` with live 3-phase progress logging. 10k docs, 243 queries: HitRate@5 57.6%, ingest 6.7 docs/sec (~25 min), peak RSS 15.3 GB, query P99 324 ms. Report: docs/benchmarks/fiqa-10k.md; README table updated.  
 **Next:** 100k `--fast` stress tier; streaming ingest for 1M+; Ship phase CI gate  
-**Docs:** [benchmarks/README.md](../benchmarks/README.md) — results narrative + 10M roadmap
+**Docs:** [benchmarks/README.md](../benchmarks/README.md) — published results (≤10k) + future scale roadmap
 
 ### 2026-09-13 — Craft adoption audit (complete)
 

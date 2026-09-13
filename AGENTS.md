@@ -8,7 +8,7 @@ Designed for open-source adoption by small-to-medium businesses (SMBs) and enter
 - **Dual-Mode Operation**:
   - **Local Mode**: 100% air-gapped, zero-egress operation using Ollama + FastEmbed ONNX on consumer CPUs/GPUs.
   - **Cloud Mode**: High-capability cloud synthesis using LiteLLM (OpenAI, Anthropic, Gemini) with zero local GPU requirements.
-- **Enterprise Scale & Precision**: Handles from 1,000 to **10 Million+ documents** with memory-efficient indexing, structural table preservation, and citation attribution.
+- **Enterprise-Grade Retrieval**: Hybrid dense+sparse search, table preservation, dedup, reranking, and citations. **Validated today** on real BEIR benchmarks up to **10,000 documents** (FiQA@10k, Sep 2026). Hyperscale targets (100k–10M+) are on the roadmap — see [README Status & Roadmap](README.md#status--roadmap) and [ADR-012](docs/decisions/0012-synthetic-corpus-and-scale-benchmarking.md) (synthetic streaming generator not yet built). Do not claim 10M+ production readiness without published stress reports.
 
 ## Architecture Principles
 1. **Spec & ADR First**: Every architectural fork (chunking strategy, vector DB selection, indexing mode, hybrid retrieval weighting, reranking pipeline) MUST be documented via an Architecture Decision Record (ADR) in `docs/decisions/` before lock-in.
