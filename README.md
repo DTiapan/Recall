@@ -130,14 +130,19 @@ RAG_MODE=local recall benchmark --dataset beir:scifact --limit 500
 
 Recall evaluates hybrid retrieval on **real-world corpora** with human relevance labels — not synthetic templates. See [ADR-013](docs/decisions/0013-real-world-benchmark-datasets.md).
 
+**Full benchmark narrative** (expected results, improvements, scale roadmap to 10M+): [docs/benchmarks/README.md](docs/benchmarks/README.md).
+
 **Environment:** `RAG_MODE=local`, FastEmbed `BAAI/bge-small-en-v1.5` (dense + sparse), in-memory Qdrant, Apple Silicon CPU (Sep 2026).
 
 | Dataset | Docs | Queries | HitRate@5 | MRR | Rerank HitRate@5 | Rerank MRR |
 |---|---:|---:|---:|---:|---:|---:|
 | [Bundled sample](data/sample/) (MD, DOCX, PDF) | 5 | 10 | **100.0%** | **0.875** | **100.0%** | **1.000** |
 | [BEIR SciFact](https://github.com/beir-cellar/beir) | 500 | 35 | **85.7%** | **0.757** | — | — |
+| [BEIR FiQA](https://github.com/beir-cellar/beir) @10k | 10,000 | 243 | **57.6%** | **0.463** | **51.4%** | **0.416** |
 
 Sample benchmark also reports query P50 **40 ms** and rerank P50 **60 ms** on local FastEmbed (Sep 2026).
+
+FiQA @10k scale run (`batch_size=128`, in-memory Qdrant, Apple Silicon CPU, Sep 2026): ingest **6.7 docs/sec** (~25 min), peak RSS **15.3 GB**, query P50 **257 ms**, P95 **299 ms**, P99 **324 ms**, rerank P50 **280 ms**. Full report: [docs/benchmarks/fiqa-10k.md](docs/benchmarks/fiqa-10k.md).
 
 ```bash
 # Bundled enterprise corpus (no extra deps, no network)

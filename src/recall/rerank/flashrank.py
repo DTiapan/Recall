@@ -11,6 +11,55 @@ from recall.core.models import SearchResult
 
 logger = logging.getLogger(__name__)
 
+FLASHRANK_MODEL_NAMES = frozenset(
+    {
+        "ms-marco-TinyBERT-L-2-v2",
+        "ms-marco-MiniLM-L-12-v2",
+        "rank-T5-flan",
+    }
+)
+
+# HuggingFace / docs names that FlashRank does not load directly — map to best ONNX peer.
+_FLASHRANK_MODEL_ALIASES: dict[str, str] = {
+    "BAAI/bge-reranker-base": "ms-marco-MiniLM-L-12-v2",
+    "bge-reranker-base": "ms-marco-MiniLM-L-12-v2",
+    "BAAI/bge-reranker-large": "ms-marco-MiniLM-L-12-v2",
+    "BAAI/bge-reranker-v2-m3": "ms-marco-MiniLM-L-12-v2",
+    "cross-encoder/ms-marco-MiniLM-L-6-v2": "ms-marco-MiniLM-L-12-v2",
+    "cross-encoder/ms-marco-TinyBERT-L-6": "ms-marco-TinyBERT-L-2-v2",
+}
+
+
+def resolve_flashrank_model_name(local_model: str) -> str:
+    """Map config ``reranking.local_model`` to a FlashRank ``Ranker`` model name."""
+    normalized = local_model.strip()
+    if normalized in FLASHRANK_MODEL_NAMES:
+        return normalized
+    if normalized in _FLASHRANK_MODEL_ALIASES:
+        resolved = _FLASHRANK_MODEL_ALIASES[normalized]
+        logger.info(
+            "Reranker model %s is not a native FlashRank ONNX name; using %s",
+            normalized,
+            resolved,
+        )
+        return resolved
+    tail = normalized.rsplit("/", 1)[-1]
+    if tail in FLASHRANK_MODEL_NAMES:
+        return tail
+    if tail in _FLASHRANK_MODEL_ALIASES:
+        resolved = _FLASHRANK_MODEL_ALIASES[tail]
+        logger.info(
+            "Reranker model %s is not a native FlashRank ONNX name; using %s",
+            normalized,
+            resolved,
+        )
+        return resolved
+    logger.warning(
+        "Unknown reranker model %s; falling back to ms-marco-MiniLM-L-12-v2",
+        normalized,
+    )
+    return "ms-marco-MiniLM-L-12-v2"
+
 
 class FlashRankReranker:
     """Local, high-speed ONNX Cross-Encoder reranker.
@@ -21,7 +70,7 @@ class FlashRankReranker:
 
     def __init__(
         self,
-        model_name: str = "ms-marco-TinyBERT-L-2-v2",
+        model_name: str = "ms-marco-MiniLM-L-12-v2",
         cache_dir: str | None = None,
     ) -> None:
         self.model_name = model_name

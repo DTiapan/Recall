@@ -7,27 +7,35 @@
 
 ## Current focus
 
-Recall Phase 1 (ingestion + eval) is largely built. Current emphasis: **real-world benchmark evidence** (sample corpus, BEIR SciFact, batched scale ingest). Craft v0.1 adopted; see [craft-setup.md](../craft-setup.md).
+AP-003 Phase A + B **complete** — rerank correctness fixed, BEIR-comparable metrics, disk-persisted indexes. **Next:** AP-003 Phase C tuning (optional) or Ship phase CI gate.
 
 ## Open attack plan
 
-- AP-002 — 10k FiQA scale benchmark with batched ingest (planned)
+- AP-003 Phase C — Reranker model comparison, hybrid weight grid, long-doc chunking ([research doc](../benchmarks/retrieval-quality-investigation.md))
 
 ## Recent sessions
+
+### 2026-09-13 — AP-003 retrieval quality fixes + FiQA@10k re-run (complete)
+
+**Phase:** Verify  
+**Summary:** Fixed rerank path: split `reranking.score_threshold` (null default), wired `local_model` + `candidate_k=50`, fixed benchmark rerank metric aggregation, added `--rerank` CLI. Hardened disk persistence (`manifest.json`, `subsample.json`, auto-reports; incomplete slot detection). Re-ran FiQA@10k with fair subsample (648 queries): hybrid HR@5 **73.8%**, rerank **72.1%**, nDCG@10 **0.522**. Index at `~/.cache/recall/benchmark-indexes/beir-fiqa_10k_s42`. **109 tests green.**  
+**Decisions:** DR-003, DR-004  
+**Lessons:** LL-003 resolved, LL-006 resolved  
+**Next:** Phase C tuning or Ship CI gate; reuse persisted index for fast re-eval  
+**Docs:** [fiqa-10k-ap003-rerank.md](../benchmarks/fiqa-10k-ap003-rerank.md), [investigation](../benchmarks/retrieval-quality-investigation.md)
+
+### 2026-09-13 — AP-002 FiQA@10k benchmark (complete)
+
+**Phase:** Verify  
+**Summary:** Ran `recall benchmark --dataset beir:fiqa --scale 10k --batch-size 128` with live 3-phase progress logging. 10k docs, 243 queries: HitRate@5 57.6%, ingest 6.7 docs/sec (~25 min), peak RSS 15.3 GB, query P99 324 ms. Report: docs/benchmarks/fiqa-10k.md; README table updated.  
+**Next:** 100k `--fast` stress tier; streaming ingest for 1M+; Ship phase CI gate  
+**Docs:** [benchmarks/README.md](../benchmarks/README.md) — results narrative + 10M roadmap
 
 ### 2026-09-13 — Craft adoption audit (complete)
 
 **Phase:** Verify  
 **Summary:** Cross-checked Recall against Craft v0.1 craft-adopt checklist. Ledger, ADRs, AGENTS.md, craft.project.yaml confirmed. Added docs/craft-setup.md for new-machine bootstrap; aligned CONSTRAINTS with using-craft + engineering-ledger.  
 **Next:** Run AP-002 FiQA 10k; optional Battery onboard on new laptop
-
-### 2026-09-13 — Craft adoption + ledger backfill
-
-**Phase:** Verify  
-**Summary:** Adopted Craft orchestration layer on Recall. Backfilled ledger for benchmark/eval work (sample corpus, BEIR doc_id fix, batched ingest). Tagged universal lesson on benchmark metadata alignment.  
-**Decisions:** DR-001, DR-002  
-**Lessons:** LL-001 (universal), LL-002 (project)  
-**Next:** Run AP-002 FiQA 10k with batch_size=128; document in README
 
 ## Quick links
 

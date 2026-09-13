@@ -4,6 +4,7 @@ import pytest
 from recall.core.interfaces import BaseReranker
 from recall.core.models import ChunkMetadata, SearchResult
 from recall.rerank import FlashRankReranker, MockReranker
+from recall.rerank.flashrank import resolve_flashrank_model_name
 
 
 def _make_candidate(chunk_id: str, text: str) -> SearchResult:
@@ -14,6 +15,12 @@ def _make_candidate(chunk_id: str, text: str) -> SearchResult:
         metadata=ChunkMetadata(doc_id=f"doc_{chunk_id}", chunk_index=0),
         vector_name="fused",
     )
+
+
+def test_resolve_flashrank_model_name_native_and_aliases():
+    assert resolve_flashrank_model_name("ms-marco-MiniLM-L-12-v2") == "ms-marco-MiniLM-L-12-v2"
+    assert resolve_flashrank_model_name("BAAI/bge-reranker-base") == "ms-marco-MiniLM-L-12-v2"
+    assert resolve_flashrank_model_name("unknown-model") == "ms-marco-MiniLM-L-12-v2"
 
 
 def test_mock_reranker_conformance_and_ranking():

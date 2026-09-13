@@ -63,6 +63,7 @@ formats = [
 benchmark = [
     "beir>=2.0.0",
     "datasets>=2.19.0",
+    "pytrec_eval-terrier>=0.5.10",
 ]
 dev = [
     "pytest>=8.1.0",

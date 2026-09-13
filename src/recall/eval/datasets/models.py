@@ -29,3 +29,5 @@ class BenchmarkCorpus:
     documents: list[BenchmarkDocument]
     queries: list[BenchmarkQuery]
     data_root: Path | None = None
+    qrels: dict[str, dict[str, int]] | None = None
+    subsample_meta: dict[str, int | str] | None = None

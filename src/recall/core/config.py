@@ -73,9 +73,17 @@ class RetrievalSettings(BaseModel):
 class RerankingSettings(BaseModel):
     enabled: bool = True
     top_n: int = 5
-    local_model: str = "BAAI/bge-reranker-base"
+    candidate_k: int = Field(
+        default=50,
+        description="Hybrid pool size fed to the cross-encoder before reranking",
+    )
+    local_model: str = "ms-marco-MiniLM-L-12-v2"
     cloud_model: str = "cohere"
     timeout_ms: int = 250
+    score_threshold: float | None = Field(
+        default=None,
+        description="Optional cross-encoder cutoff; None = rank only (recommended for eval)",
+    )
 
 
 class GuardrailsSettings(BaseModel):
@@ -140,6 +148,7 @@ class EnvSettings(BaseSettings):
     rag_api_key: str | None = Field(default=None, alias="RAG_API_KEY")
 
     qdrant_url: str = Field(default="http://localhost:6333", alias="QDRANT_URL")
+    qdrant_path: str | None = Field(default=None, alias="QDRANT_PATH")
     qdrant_api_key: str | None = Field(default=None, alias="QDRANT_API_KEY")
 
     openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from collections.abc import Callable
 from typing import Any
@@ -77,11 +78,21 @@ class RAGService:
         if vector_store:
             self.vector_store = vector_store
         else:
-            location = self.config.env.qdrant_url or ":memory:"
-            self.vector_store = QdrantVectorStore(
-                location=location,
-                api_key=self.config.env.qdrant_api_key,
-            )
+            qdrant_path = self.config.env.qdrant_path
+            qdrant_url = self.config.env.qdrant_url
+            if qdrant_path:
+                self.vector_store = QdrantVectorStore(path=qdrant_path)
+            elif qdrant_url and qdrant_url.startswith(("http://", "https://")):
+                self.vector_store = QdrantVectorStore(
+                    url=qdrant_url,
+                    api_key=self.config.env.qdrant_api_key,
+                )
+            else:
+                location = qdrant_url or ":memory:"
+                self.vector_store = QdrantVectorStore(
+                    location=location,
+                    api_key=self.config.env.qdrant_api_key,
+                )
 
         # Initialize sparse embedding + index strategy
         if sparse_embedder:
@@ -113,7 +124,12 @@ class RAGService:
             if self.config.env.rag_env == "test":
                 self.reranker = MockReranker()
             else:
-                self.reranker = FlashRankReranker()
+                from recall.rerank.flashrank import resolve_flashrank_model_name
+
+                rerank_model = resolve_flashrank_model_name(
+                    self.config.pipeline.reranking.local_model
+                )
+                self.reranker = FlashRankReranker(model_name=rerank_model)
 
         # Initialize Compressor & Synthesizer
         self.compressor = compressor or ContextCompressor()
@@ -145,6 +161,10 @@ class RAGService:
         if self._legacy_sparse_indexes is None:
             self._legacy_sparse_indexes = BM25IndexRegistry()
         return RegistrySparseIndexAdapter(self._legacy_sparse_indexes, collection_name)
+
+    def _rerank_candidate_limit(self, output_limit: int) -> int:
+        """Hybrid retrieval depth before cross-encoder reranking."""
+        return max(self.config.pipeline.reranking.candidate_k, output_limit)
 
     def _get_retriever(self, collection_name: str) -> BaseHybridRetriever:
         timeout_sec = self.config.pipeline.retrieval.timeout_ms / 1000.0
@@ -180,8 +200,11 @@ class RAGService:
 
     def _attach_embeddings(self, chunks: list[Chunk]) -> None:
         texts = [c.searchable_text for c in chunks]
-        dense_embeddings = self.embedder.embed_texts(texts)
-        sparse_embeddings = self.sparse_embedder.embed_texts(texts)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            dense_future = pool.submit(self.embedder.embed_texts, texts)
+            sparse_future = pool.submit(self.sparse_embedder.embed_texts, texts)
+            dense_embeddings = dense_future.result()
+            sparse_embeddings = sparse_future.result()
         for chunk, dense, sparse in zip(chunks, dense_embeddings, sparse_embeddings):
             chunk.embedding = dense
             chunk.sparse_vector = sparse
@@ -339,7 +362,7 @@ class RAGService:
     ) -> list[SearchResult]:
         """Hybrid retrieval followed by cross-encoder reranking."""
         col = collection_name or self.default_collection
-        candidate_limit = retrieve_limit or max(limit * 4, self.config.pipeline.retrieval.top_k)
+        candidate_limit = retrieve_limit or self._rerank_candidate_limit(limit)
         candidates = await self.search(
             query=query,
             limit=candidate_limit,
@@ -348,7 +371,7 @@ class RAGService:
         if not candidates:
             return []
 
-        score_thresh = self.config.pipeline.retrieval.score_threshold
+        score_thresh = self.config.pipeline.reranking.score_threshold
         with trace_span(
             _tracer,
             "rerank",
@@ -376,7 +399,13 @@ class RAGService:
             "query.pipeline",
             {"collection.name": collection_name or self.default_collection, "top_k": top_k},
         ):
-            candidates = await self.search(question, limit=top_k * 4, collection_name=collection_name)
+            rerank_enabled = self.config.pipeline.reranking.enabled
+            retrieve_limit = self._rerank_candidate_limit(top_k) if rerank_enabled else top_k
+            candidates = await self.search(
+                question,
+                limit=retrieve_limit,
+                collection_name=collection_name,
+            )
             if not candidates:
                 return SynthesizedResponse(
                     answer="Based on the provided documents, I do not have enough information to answer this question.",
@@ -386,19 +415,26 @@ class RAGService:
                     latency_seconds=0.0,
                 )
 
-            score_thresh = getattr(self.config.pipeline.retrieval, "score_threshold", 0.35)
-            with trace_span(_tracer, "rerank", {"candidate.count": len(candidates), "top_k": top_k}):
-                reranked = self.reranker.rerank(
-                    query=question,
-                    candidates=candidates,
-                    top_k=top_k,
-                    score_threshold=score_thresh,
-                )
+            final_candidates = candidates[:top_k]
+            if rerank_enabled:
+                score_thresh = self.config.pipeline.reranking.score_threshold
+                with trace_span(
+                    _tracer,
+                    "rerank",
+                    {"candidate.count": len(candidates), "top_k": top_k},
+                ):
+                    reranked = self.reranker.rerank(
+                        query=question,
+                        candidates=candidates,
+                        top_k=top_k,
+                        score_threshold=score_thresh,
+                    )
+                final_candidates = reranked if reranked else candidates[:top_k]
 
-            with trace_span(_tracer, "compress", {"candidate.count": len(reranked or candidates)}):
+            with trace_span(_tracer, "compress", {"candidate.count": len(final_candidates)}):
                 compressed = self.compressor.compress(
                     query=question,
-                    candidates=reranked if reranked else candidates[:top_k],
+                    candidates=final_candidates,
                     max_tokens_per_chunk=200,
                     max_total_tokens=1500,
                 )

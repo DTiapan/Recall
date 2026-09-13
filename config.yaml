@@ -54,9 +54,11 @@ retrieval:
 reranking:
   enabled: true
   top_n: 5                     # Chunks returned to synthesis after cross-encoder
-  local_model: "BAAI/bge-reranker-base"
+  candidate_k: 50              # Hybrid pool before cross-encoder (BEIR convention: 50–100)
+  local_model: "ms-marco-MiniLM-L-12-v2"  # FlashRank ONNX (see recall.rerank.flashrank)
   cloud_model: "cohere"
   timeout_ms: 250              # Fallback to RRF top candidates if reranker times out
+  score_threshold: null        # null = rank-only; set only after per-domain calibration
 
 # Observability (OpenTelemetry)
 observability:

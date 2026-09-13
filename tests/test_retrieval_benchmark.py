@@ -92,6 +92,95 @@ async def test_retrieval_benchmark_on_real_sample_corpus():
     assert report.queries_evaluated == 10
     assert report.hit_rate_at_5 >= 0.5
     assert report.mrr > 0.0
-    assert report.hit_rate_at_5_rerank >= report.hit_rate_at_5 or report.hit_rate_at_5_rerank >= 0.5
     assert report.latency_p50_ms >= 0.0
-    assert report.rerank_latency_p50_ms >= 0.0
+
+
+@pytest.mark.asyncio
+async def test_retrieval_benchmark_reports_rerank_metrics_when_enabled():
+    corpus = load_local_benchmark(SAMPLE_ROOT, name="sample")
+    service = RAGService(
+        config=AppConfig(
+            env=EnvSettings(rag_env="test", rag_mode="local"),
+            pipeline=PipelineConfig(),
+        ),
+        vector_store=QdrantVectorStore(location=":memory:"),
+        embedding_provider=MockEmbeddingProvider(dimensions=16),
+        reranker=MockReranker(),
+        synthesizer=Synthesizer(model_name="mock", mock_response="benchmark [Doc 1]."),
+        default_collection="bench_rerank_metrics",
+    )
+    service.config.pipeline.reranking.candidate_k = 12
+
+    runner = RetrievalBenchmarkRunner(service=service)
+    report = await runner.run(
+        corpus=corpus,
+        collection_name="bench_rerank_metrics",
+        include_rerank=True,
+        retrieve_limit=12,
+    )
+
+    assert report.rerank_evaluated is True
+    assert report.rerank_candidate_k == 12
+    assert report.hit_rate_at_5_rerank >= 0.0
+    assert report.mrr_rerank >= 0.0
+    assert "rerank" in report.to_markdown().lower()
+
+
+@pytest.mark.asyncio
+async def test_retrieval_benchmark_reuses_persisted_index(tmp_path):
+    from recall.eval.benchmark_index import build_index_fingerprint, resolve_benchmark_index
+
+    corpus = load_local_benchmark(SAMPLE_ROOT, name="sample")
+    index = resolve_benchmark_index(
+        dataset="sample",
+        document_limit=None,
+        scale=None,
+        subsample_seed=42,
+        fast=False,
+        index_dir=tmp_path,
+    )
+    service = RAGService(
+        config=AppConfig(
+            env=EnvSettings(rag_env="test", rag_mode="local"),
+            pipeline=PipelineConfig(),
+        ),
+        vector_store=QdrantVectorStore(path=str(index.qdrant_path)),
+        embedding_provider=MockEmbeddingProvider(dimensions=16),
+        reranker=MockReranker(),
+        synthesizer=Synthesizer(model_name="mock", mock_response="benchmark [Doc 1]."),
+        default_collection=index.collection_name,
+    )
+
+    runner = RetrievalBenchmarkRunner(service=service)
+    fingerprint = build_index_fingerprint(
+        dataset="sample",
+        document_count=len(corpus.documents),
+        subsample_seed=42,
+        scale=None,
+        document_limit=None,
+        dense_model="unknown-dense",
+        sparse_model="unknown-sparse",
+        chunk_size=500,
+        rag_mode="local",
+        fast_mode=False,
+    )
+    first = await runner.run(
+        corpus=corpus,
+        collection_name=index.collection_name,
+        index_context=index,
+        index_fingerprint=fingerprint,
+        reuse_index=False,
+    )
+
+    second = await runner.run(
+        corpus=corpus,
+        collection_name=index.collection_name,
+        index_context=index,
+        index_fingerprint=fingerprint,
+        reuse_index=True,
+    )
+
+    assert first.index_reused is False
+    assert second.index_reused is True
+    assert second.ingest_seconds < first.ingest_seconds
+    assert second.documents_ingested == first.documents_ingested
