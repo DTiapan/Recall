@@ -218,7 +218,7 @@ Recall is the **product** in a three-repo stack for serious GenAI engineering:
 | [Craft](https://github.com/DTiapan/craft) | Workflow router + [engineering ledger](docs/engineering-ledger/INDEX.md) (decisions, lessons, phase gates) |
 | [Battery](https://github.com/DTiapan/battery) | Local MCP agent memory (hybrid search, `BATTERY.md` in git) |
 
-Craft is adopted in this repo (`docs/engineering-ledger/`). Battery complements agent session memory while Recall handles document retrieval.
+Craft is adopted in this repo (`docs/engineering-ledger/`, [setup guide](docs/craft-setup.md)). Battery complements agent session memory while Recall handles document retrieval.
 
 ---
 

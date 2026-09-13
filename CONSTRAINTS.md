@@ -1,14 +1,19 @@
 # Project Quality Constraints & Anti-Drift Contract
 
-> Enforced by `skills/constraint-driven-development` and `skills/using-agent-skills`.
+> Enforced by Craft `using-craft` + `engineering-ledger`, and `skills/constraint-driven-development`.
 > This document defines the non-negotiable quality floor and anti-drift boundaries for this repository.
 
 ## 1. Zero-Drift Policy (Mandatory Skill Usage)
 
-Before executing any task, the agent MUST explicitly identify and apply the corresponding skill:
+Before executing any task:
+
+1. Read `docs/engineering-ledger/INDEX.md` (Craft engineering ledger).
+2. Route the active phase via Craft `using-craft` to **one** upstream skill (see [docs/craft-setup.md](docs/craft-setup.md)).
+3. Apply that skill fully before writing code.
 
 | Activity / Task | Mandatory Skill | Enforcement Rule |
 |---|---|---|
+| **Session start / handoff** | `engineering-ledger` + `using-craft` | Read INDEX + active AP; append DR/LL/INDEX before ending substantive work. |
 | **Architecture choices, trade-offs, forks** | `documentation-and-adrs` | An ADR (`ADR-xxx`) MUST be created in `docs/decisions/` before code lock-in. |
 | **Requirements exploration & ideation** | `idea-refine` / `interview-me` | Clarify constraints and surface assumptions before writing code. |
 | **New module or API contract design** | `api-and-interface-design` + `spec-driven-development` | Define Pydantic models / Protocols in `core/interfaces.py` before concrete implementations. |

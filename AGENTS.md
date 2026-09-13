@@ -28,8 +28,12 @@ Designed for open-source adoption by small-to-medium businesses (SMBs) and enter
    - `config.yaml`: Version-controlled pipeline tuning parameters (chunk sizes, retrieval thresholds, weights, model selections).
 
 ## Engineering Disciplines & Skill Workflows
-This repository strictly enforces `addyosmani/agent-skills`. See [CONSTRAINTS.md](CONSTRAINTS.md) for the binding contract:
-- **Mandatory Skill Dispatch**: Before executing any task, the agent MUST activate and follow the corresponding workflow skill (`documentation-and-adrs`, `idea-refine`, `spec-driven-development`, `test-driven-development`, `security-and-hardening`, `git-workflow-and-versioning`).
+
+This repository uses **[Craft](https://github.com/DTiapan/craft)** (`using-craft`) to route into **[addyosmani/agent-skills](https://github.com/addyosmani/agent-skills)** on the agent machine (reference-only, not vendored in git). See [CONSTRAINTS.md](CONSTRAINTS.md) and [docs/craft-setup.md](docs/craft-setup.md) for the binding contract.
+
+- **Ledger first:** Read `docs/engineering-ledger/INDEX.md` before non-trivial work.
+- **One phase, one skill:** Route via `using-craft`; do not stack process skills.
+- **Mandatory Skill Dispatch:** Apply the workflow skill for the active phase (`documentation-and-adrs`, `spec-driven-development`, `test-driven-development`, etc.).
 - **Zero Drift Mandate**:
   - No premature implementation: Stay within the active phase. Do not build downstream layers until upstream foundations are tested green.
   - Spec & ADR First: Any architectural fork or new subsystem requires an ADR in `docs/decisions/` before code lock-in.
@@ -39,8 +43,9 @@ This repository strictly enforces `addyosmani/agent-skills`. See [CONSTRAINTS.md
 ## Craft (orchestration + ledger)
 
 - Non-trivial work: read `docs/engineering-ledger/INDEX.md` first.
-- Route phases via `using-craft` skill (reference-only — do not copy Addy skills into this repo).
-- Append DR/LL/INDEX before ending substantive sessions.
+- Route phases via `using-craft` skill (reference-only — do not copy Addy or Craft skills into this repo).
+- Append DR/LL/INDEX before ending substantive sessions; tag lessons with `Scope: project | universal`.
 - Irreversible forks: ADR in `docs/decisions/` per `documentation-and-adrs`.
+- New machine setup: [docs/craft-setup.md](docs/craft-setup.md)
 - Project manifest: [craft.project.yaml](craft.project.yaml)
 

@@ -7,13 +7,19 @@
 
 ## Current focus
 
-Recall Phase 1 (ingestion + eval) is largely built. Current emphasis: **real-world benchmark evidence** (sample corpus, BEIR SciFact, batched scale ingest) and Craft adoption for running narrative alongside ADRs.
+Recall Phase 1 (ingestion + eval) is largely built. Current emphasis: **real-world benchmark evidence** (sample corpus, BEIR SciFact, batched scale ingest). Craft v0.1 adopted; see [craft-setup.md](../craft-setup.md).
 
 ## Open attack plan
 
 - AP-002 — 10k FiQA scale benchmark with batched ingest (planned)
 
 ## Recent sessions
+
+### 2026-09-13 — Craft adoption audit (complete)
+
+**Phase:** Verify  
+**Summary:** Cross-checked Recall against Craft v0.1 craft-adopt checklist. Ledger, ADRs, AGENTS.md, craft.project.yaml confirmed. Added docs/craft-setup.md for new-machine bootstrap; aligned CONSTRAINTS with using-craft + engineering-ledger.  
+**Next:** Run AP-002 FiQA 10k; optional Battery onboard on new laptop
 
 ### 2026-09-13 — Craft adoption + ledger backfill
 
@@ -25,6 +31,7 @@ Recall Phase 1 (ingestion + eval) is largely built. Current emphasis: **real-wor
 
 ## Quick links
 
+- [Craft setup (new machine)](../craft-setup.md)
 - [Phases](phases.md)
 - [Attack plans](attack-plans.md)
 - [Decisions](decisions.md)
