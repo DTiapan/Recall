@@ -3,7 +3,7 @@
 [![Python Version](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Architecture: ADRs](https://img.shields.io/badge/architecture-13%20ADRs%20recorded-blue.svg)](docs/decisions/)
-[![Tests](https://img.shields.io/badge/tests-91%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-109%20passed-brightgreen.svg)]()
 [![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
 > **Recall** is a turnkey, open-source Retrieval-Augmented Generation (RAG) platform that deploys in one click with zero setup—providing self-hosted hybrid search, table-aware structural chunking, cross-encoder reranking, and dual-mode local (Ollama) and cloud (LiteLLM) synthesis for enterprise knowledge bases scaling from 1,000 to 10M+ documents.
@@ -132,31 +132,32 @@ Recall evaluates hybrid retrieval on **real-world corpora** with human relevance
 
 **Full benchmark narrative** (expected results, improvements, scale roadmap to 10M+): [docs/benchmarks/README.md](docs/benchmarks/README.md).
 
-**Environment:** `RAG_MODE=local`, FastEmbed `BAAI/bge-small-en-v1.5` (dense + sparse), in-memory Qdrant, Apple Silicon CPU (Sep 2026).
+**Environment:** `RAG_MODE=local`, FastEmbed `BAAI/bge-small-en-v1.5` (dense + sparse), disk-backed Qdrant (`~/.cache/recall/benchmark-indexes/`), Apple Silicon CPU (Sep 2026). Fair subsample: qrels-aware + `--subsample-seed 42` (not first-N dict order).
 
-| Dataset | Docs | Queries | HitRate@5 | MRR | Rerank HitRate@5 | Rerank MRR |
+| Dataset | Docs | Queries | HitRate@5 | nDCG@10 | MRR | Rerank HR@5 |
 |---|---:|---:|---:|---:|---:|---:|
-| [Bundled sample](data/sample/) (MD, DOCX, PDF) | 5 | 10 | **100.0%** | **0.875** | **100.0%** | **1.000** |
-| [BEIR SciFact](https://github.com/beir-cellar/beir) | 500 | 35 | **85.7%** | **0.757** | — | — |
-| [BEIR FiQA](https://github.com/beir-cellar/beir) @10k | 10,000 | 243 | **57.6%** | **0.463** | **51.4%** | **0.416** |
+| [Bundled sample](data/sample/) (MD, DOCX, PDF) | 5 | 10 | **100.0%** | — | **0.875** | **100.0%** |
+| [BEIR SciFact](https://github.com/beir-cellar/beir) @500 | 500 | **300** | **91.0%** | **0.860** | **0.839** | — |
+| [BEIR FiQA](https://github.com/beir-cellar/beir) @500 | 500 | **500** | **78.8%** | **0.722** | **0.686** | — |
+| [BEIR FiQA](https://github.com/beir-cellar/beir) @10k | 10,000 | **648** | **73.8%** | **0.522** | **0.614** | **72.1%** |
 
 Sample benchmark also reports query P50 **40 ms** and rerank P50 **60 ms** on local FastEmbed (Sep 2026).
 
-FiQA @10k scale run (`batch_size=128`, in-memory Qdrant, Apple Silicon CPU, Sep 2026): ingest **6.7 docs/sec** (~25 min), peak RSS **15.3 GB**, query P50 **257 ms**, P95 **299 ms**, P99 **324 ms**, rerank P50 **280 ms**. Full report: [docs/benchmarks/fiqa-10k.md](docs/benchmarks/fiqa-10k.md).
+FiQA @10k (`batch_size=128`, disk index, `--rerank`, Sep 2026): ingest **14.9 docs/sec** (~11 min), peak RSS **14.8 GB**, query P50 **247 ms**, rerank P50 **1608 ms** (pool=50). Reports: [fiqa-10k-ap003-rerank](docs/benchmarks/fiqa-10k-ap003-rerank.md) (current), [fiqa-10k](docs/benchmarks/fiqa-10k.md) (pre-fix baseline).
 
 ```bash
 # Bundled enterprise corpus (no extra deps, no network)
-RAG_MODE=local QDRANT_URL=:memory: recall benchmark --dataset sample
+RAG_MODE=local recall benchmark --dataset sample
 
-# Standard IR benchmark (downloads ~2.7 MB on first run)
+# Standard IR benchmark (downloads ~2.7 MB on first run; index persisted for reuse)
 uv pip install -e ".[benchmark]"
-RAG_MODE=local QDRANT_URL=:memory: recall benchmark --dataset beir:scifact --limit 500
+RAG_MODE=local recall benchmark --dataset beir:scifact --limit 500 --subsample-seed 42
 
-# Scale tier (batched embed + bulk upsert, batch_size=128)
-RAG_MODE=local QDRANT_URL=:memory: recall benchmark --dataset beir:fiqa --scale 10k --batch-size 128
+# Scale tier (batched embed + bulk upsert; re-run skips ingest when manifest matches)
+RAG_MODE=local recall benchmark --dataset beir:fiqa --scale 10k --batch-size 128 --rerank --subsample-seed 42
 
 # High-throughput scale stress (100k–10M index/latency, mock embeddings — not IR quality)
-RAG_MODE=local QDRANT_URL=:memory: recall benchmark --dataset beir:fiqa --scale 100k --fast
+RAG_MODE=local recall benchmark --dataset beir:fiqa --scale 100k --fast --in-memory
 ```
 
 ---
