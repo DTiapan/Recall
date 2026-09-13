@@ -3,7 +3,7 @@
 [![CI](https://github.com/DTiapan/Recall/actions/workflows/ci.yml/badge.svg)](https://github.com/DTiapan/Recall/actions/workflows/ci.yml)
 [![Python Version](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Architecture: ADRs](https://img.shields.io/badge/architecture-13%20ADRs%20recorded-blue.svg)](docs/decisions/)
+[![Architecture: ADRs](https://img.shields.io/badge/architecture-14%20ADRs%20recorded-blue.svg)](docs/decisions/)
 [![Code Style: Ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
 > **Recall** is a turnkey, open-source Retrieval-Augmented Generation (RAG) platform that deploys in one click with zero setup—providing self-hosted hybrid search, table-aware structural chunking, cross-encoder reranking, and dual-mode local (Ollama) and cloud (LiteLLM) synthesis for enterprise knowledge bases scaling from 1,000 to 10M+ documents.
@@ -164,16 +164,61 @@ RAG_MODE=local recall benchmark --dataset beir:fiqa --scale 100k --fast --in-mem
 
 ---
 
+## Challenges, learnings & what we improved
+
+Building a production RAG stack surfaced real failures long before “model quality” was the bottleneck. We document the full trail in the [engineering ledger](docs/engineering-ledger/INDEX.md) (lessons, tactical decisions, attack plans). Below is the public summary — not buried in ADRs alone.
+
+### Improvements so far
+
+| Area | Before | Now |
+|------|--------|-----|
+| **Eval correctness** | 0% HitRate@5 on SciFact (label mismatch) | **91%** HR@5 @500 docs with preserved BEIR `doc_id` |
+| **Scale ingest** | ~13 min projected for FiQA@10k at batch=1 | **~11 min** @ batch=128; disk-persisted indexes with manifest reuse |
+| **Rerank fairness** | Rerank path filtered at 0.35; hybrid unfiltered → false regression | Split `reranking.score_threshold` (default **null**); FiQA@10k rerank within **1.7pp** of hybrid |
+| **Metrics** | Custom HitRate@5 only | **pytrec_eval** (nDCG@10, MRR@10) + fair qrels-aware subsample |
+| **CI gate** | Tests only | **pytest + sample benchmark** (`--min-hit-rate 0.90`) on every PR |
+| **Web UI** | Dark prototype, no streaming | Light production UI: **streaming SSE**, allowlisted **model picker**, doc **delete**, fast mode, per-stage **latency** |
+| **Synthesis** | Local Ollama only | **OpenRouter** via LiteLLM; reasoning leak suppressed; markdown answers |
+
+### Challenges we hit (and how we fixed them)
+
+1. **Benchmark labels ≠ indexed IDs** — `ingest_text` hashed `source_uri` into `doc_id`, breaking qrel joins. *Fix:* pass explicit `doc_id` through ingest; fallback `relevant_sources` matching. ([LL-001](docs/engineering-ledger/lessons.md))
+2. **“Rerank is worse than hybrid”** — looked like a bad cross-encoder; was asymmetric `score_threshold` on rerank only. *Fix:* separate rerank threshold; rank-only default; wire FlashRank model from config. ([LL-003](docs/engineering-ledger/lessons.md), [investigation](docs/benchmarks/retrieval-quality-investigation.md))
+3. **10k ingest too slow** — per-document ONNX + Qdrant round-trips. *Fix:* `ingest_chunks_batched` @ 128; `--fast` mode for million-scale stress only. ([LL-002](docs/engineering-ledger/lessons.md))
+4. **Re-running benchmarks re-embedded everything** — partial Qdrant dirs without manifest. *Fix:* disk slots under `~/.cache/recall/benchmark-indexes/` with `manifest.json` + `subsample.json`. ([DR-004](docs/engineering-ledger/decisions.md))
+5. **UI felt broken at demo time** — temp filenames in library, stale model badge, reasoning in chat, 14s latency opaque. *Fix:* `source_uri` on upload, `/v1/config` model allowlist, stream only `content`, latency footer + fast mode (skip ~1.5s rerank).
+
+### Key learnings (reusable)
+
+- **Eval label keys must match indexed metadata** — never substitute convenience hashes for benchmark `doc_id`. (universal)
+- **Never threshold only one retrieval path** — hybrid vs rerank comparisons require identical gating. (universal)
+- **Rerank wins are dataset-specific** — FiQA may gain; SciFact/NFCorpus can regress; tune per domain, not “always on.” ([LL-005](docs/engineering-ledger/lessons.md), open)
+- **Report community metrics** — nDCG@10 / Recall@10 when citing BEIR; subsample methodology matters as much as the number.
+- **Latency is pipeline-shaped** — typical chat: retrieve **&lt;200ms**, rerank **~1.5s**, LLM **~5–12s**; optimize the dominant stage first.
+- **Turnkey means operable UI** — admins need allowlisted models and doc lifecycle without editing `.env` per demo.
+
+### What we're working on next
+
+- **AP-003 Phase C** — reranker model comparison (BGE vs FlashRank), hybrid weight grid, long-doc chunking ([attack plan](docs/engineering-ledger/attack-plans.md))
+- **Scale** — 100k+ `--fast` stress tier; streaming ingest for 1M+ docs
+- **Ship** — green CI on `main`; optional OpenTelemetry export in production compose
+
+Deeper write-ups: [retrieval quality investigation](docs/benchmarks/retrieval-quality-investigation.md) · [FiQA@10k rerank report](docs/benchmarks/fiqa-10k-ap003-rerank.md) · [all lessons](docs/engineering-ledger/lessons.md)
+
+---
+
 ## REST API Reference
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/` | `GET` | Serves the interactive zero-dependency dark-mode Web UI |
-| `/v1/health` | `GET` | Healthcheck returning vector store connectivity and active dimensions |
-| `/v1/stats` | `GET` | Indexed document count and storage metrics |
-| `/v1/ingest` | `POST` | Upload document files (PDF, DOCX, MD, TXT) or raw text payloads |
-| `/v1/search` | `POST` | Concurrent hybrid search (Dense HNSW + BM25+) with RRF fusion |
-| `/v1/chat` | `POST` | End-to-end RAG synthesis returning verified citation audit trails |
+| `/` | `GET` | Embedded Web UI (upload, chat, citations) |
+| `/v1/health` | `GET` | Healthcheck, active model, embedding dimensions |
+| `/v1/config` | `GET` | UI config: model allowlist, pipeline defaults |
+| `/v1/documents` | `GET` / `DELETE` | List or remove indexed documents by `source_uri` |
+| `/v1/stats` | `GET` | Indexed chunk counts and storage metrics |
+| `/v1/ingest` | `POST` | Upload files (PDF, DOCX, MD, TXT, JSON) or raw text |
+| `/v1/search` | `POST` | Hybrid search (dense + sparse) with RRF fusion |
+| `/v1/chat` | `POST` | Full RAG pipeline; optional `stream`, `model`, `rerank` |
 
 ---
 
@@ -196,6 +241,7 @@ Every architectural milestone in Recall is documented prior to implementation:
 | [ADR-011](docs/decisions/0011-packaging-and-production-hardening.md) | Multi-Stage Hardened Dockerfile and Compose Orchestration | Accepted |
 | [ADR-012](docs/decisions/0012-synthetic-corpus-and-scale-benchmarking.md) | Synthetic Enterprise Corpus Generation and Multi-Scale Stress Benchmarking | Accepted |
 | [ADR-013](docs/decisions/0013-real-world-benchmark-datasets.md) | Real-World Benchmark Datasets (BEIR + Curated Corpus) | Accepted |
+| [ADR-014](docs/decisions/0014-ui-model-allowlist.md) | UI Model Allowlist and Per-Request Synthesis Override | Accepted |
 
 ---
 
@@ -207,7 +253,7 @@ CI runs on every push/PR to `main` — [view workflow runs](https://github.com/D
 
 | Step | Gate |
 |------|------|
-| `pytest` | 113 unit/integration tests (smoke excluded) |
+| `pytest` | 125 unit/integration tests (smoke excluded) |
 | `recall benchmark --dataset sample --in-memory` | HitRate@5 ≥ **90%**, MRR ≥ **0.60** |
 
 Reproduce the retrieval gate locally:
