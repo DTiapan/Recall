@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from contextlib import contextmanager
 from typing import Any, Iterator
 
@@ -24,6 +25,9 @@ def init_tracing(
     global _initialized
     if _initialized or not enabled:
         return
+
+    # CI sets OTEL_SDK_DISABLED=true globally; explicit init must re-enable the SDK.
+    os.environ["OTEL_SDK_DISABLED"] = "false"
 
     resource = Resource.create({"service.name": service_name})
     provider = TracerProvider(resource=resource)
