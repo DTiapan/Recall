@@ -1,4 +1,4 @@
-craft_version: "0.1.0"
+craft_version: "0.1.1"
 craft_repo: https://github.com/DTiapan/craft
 setup_doc: docs/craft-setup.md
 ledger_path: docs/engineering-ledger
