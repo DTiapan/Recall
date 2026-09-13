@@ -81,3 +81,12 @@ synthesis:
     sandbox_xml_tags: true     # Enclose retrieved chunks in <context_document> tags
     enforce_citation: true     # Require inline chunk ID citations e.g. [doc#0]
     strict_refusal: true       # Refuse answering if query is out of context domain
+
+# Web UI — model allowlist (OpenRouter slugs; prefix added automatically)
+ui:
+  default_model: openai/gpt-oss-120b
+  models:
+    - id: openai/gpt-oss-120b
+      label: GPT-OSS 120B
+    - id: deepseek/deepseek-v4-flash-0731
+      label: DeepSeek V4 Flash

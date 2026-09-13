@@ -278,5 +278,73 @@ class QdrantVectorStore:
     def count(self, collection_name: str) -> int:
         return self.client.count(collection_name=collection_name, exact=True).count
 
+    def list_sources(self, collection_name: str) -> list[dict[str, Any]]:
+        """Aggregate indexed chunks by source_uri for the document library UI."""
+        from collections import defaultdict
+
+        counts: dict[str, int] = defaultdict(int)
+        file_types: dict[str, str | None] = {}
+        offset: str | int | None = None
+
+        while True:
+            points, offset = self.client.scroll(
+                collection_name=collection_name,
+                limit=256,
+                offset=offset,
+                with_payload=["source_uri", "file_type"],
+                with_vectors=False,
+            )
+            for point in points:
+                payload = point.payload or {}
+                uri = payload.get("source_uri") or "unknown"
+                counts[str(uri)] += 1
+                if uri not in file_types:
+                    file_types[str(uri)] = payload.get("file_type")
+
+            if offset is None:
+                break
+
+        return [
+            {
+                "source_uri": uri,
+                "chunk_count": count,
+                "file_type": file_types.get(uri),
+            }
+            for uri, count in sorted(counts.items(), key=lambda item: item[0].lower())
+        ]
+
+    def delete_by_source_uri(self, collection_name: str, source_uri: str) -> int:
+        """Delete all points whose payload source_uri matches. Returns deleted count."""
+        point_ids: list[str | int] = []
+        offset: str | int | None = None
+        while True:
+            points, offset = self.client.scroll(
+                collection_name=collection_name,
+                limit=256,
+                offset=offset,
+                scroll_filter=models.Filter(
+                    must=[
+                        models.FieldCondition(
+                            key="source_uri",
+                            match=models.MatchValue(value=source_uri),
+                        )
+                    ]
+                ),
+                with_payload=False,
+                with_vectors=False,
+            )
+            point_ids.extend(point.id for point in points)
+            if offset is None:
+                break
+
+        if not point_ids:
+            return 0
+
+        self.client.delete(
+            collection_name=collection_name,
+            points_selector=models.PointIdsList(points=point_ids),
+        )
+        return len(point_ids)
+
     def delete_collection(self, collection_name: str) -> None:
         self.client.delete_collection(collection_name=collection_name)

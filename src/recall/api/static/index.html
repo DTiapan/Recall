@@ -3,161 +3,142 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Recall - The Open-Source, Turnkey Enterprise Retrieval-Augmented Generation (RAG) Platform. Hybrid search, cross-encoder reranking, and citation-backed synthesis.">
-    <title>Recall | Turnkey Enterprise RAG Platform</title>
+    <meta name="color-scheme" content="light">
+    <title>Recall</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css?v=10">
 </head>
-<body class="dark-theme">
-    <div class="app-layout">
-        <!-- Sidebar: Upload & Diagnostics -->
-        <aside class="sidebar">
-            <div class="brand">
-                <div class="logo-icon">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                        <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
-                        <polyline points="2 17 12 22 22 17"></polyline>
-                        <polyline points="2 12 12 17 22 12"></polyline>
-                    </svg>
-                </div>
-                <div>
-                    <h1 class="brand-title">Recall</h1>
-                    <span class="brand-badge">Enterprise RAG</span>
-                </div>
-            </div>
-
-            <!-- Ingestion Zone -->
-            <section class="panel-section">
-                <h2 class="section-label">Document Ingestion</h2>
-                <div id="drop-zone" class="drop-zone">
-                    <div class="drop-zone-icon">
-                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                            <polyline points="17 8 12 3 7 8"></polyline>
-                            <line x1="12" y1="3" x2="12" y2="15"></line>
-                        </svg>
-                    </div>
-                    <p class="drop-text">Drag & drop documents here</p>
-                    <span class="drop-subtext">PDF, DOCX, Markdown, Text, JSON</span>
-                    <input type="file" id="file-input" class="hidden-input" multiple accept=".pdf,.docx,.md,.txt,.json">
-                    <button type="button" id="browse-btn" class="btn btn-secondary btn-sm">Select Files</button>
-                </div>
-                <div id="upload-status" class="status-indicator hidden"></div>
-            </section>
-
-            <!-- Diagnostic Stats -->
-            <section class="panel-section stats-panel">
-                <h2 class="section-label">System Architecture</h2>
-                <div class="stat-card">
-                    <div class="stat-row">
-                        <span class="stat-name">Dense Vectors</span>
-                        <span class="stat-val" id="stat-dense">HNSW INT8 (384d)</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-name">Sparse Index</span>
-                        <span class="stat-val" id="stat-sparse">BM25+ (Okapi Lower-Bound)</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-name">Fusion</span>
-                        <span class="stat-val" id="stat-fusion">RRF (k=60)</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-name">Reranker</span>
-                        <span class="stat-val" id="stat-rerank">FlashRank ONNX</span>
-                    </div>
-                    <div class="stat-row">
-                        <span class="stat-name">Indexed Chunks</span>
-                        <span class="stat-val highlight" id="stat-chunks">0 chunks</span>
-                    </div>
-                </div>
-            </section>
-        </aside>
-
-        <!-- Main Chat Area -->
-        <main class="chat-container">
-            <header class="chat-header">
-                <div class="header-status">
-                    <span class="pulse-dot"></span>
-                    <span class="header-status-text" id="engine-status">Recall Engine Active</span>
-                </div>
-                <div class="header-actions">
-                    <button id="clear-chat-btn" class="btn btn-ghost btn-sm" title="Clear conversation">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polyline points="3 6 5 6 21 6"></polyline>
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                        </svg>
-                        Clear Chat
-                    </button>
-                </div>
-            </header>
-
-            <!-- Message Stream -->
-            <div id="message-list" class="message-list">
-                <div class="welcome-card">
-                    <div class="welcome-icon">
-                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                            <circle cx="12" cy="12" r="10"></circle>
-                            <path d="M12 16v-4"></path>
-                            <path d="M12 8h.01"></path>
-                        </svg>
-                    </div>
-                    <h2>Ask Recall Anything Across Your Enterprise Documents</h2>
-                    <p>Every answer is synthesized using concurrent hybrid search (Dense HNSW + BM25+), deep cross-encoder reranking, and citation attribution with exact document citations.</p>
-                </div>
-            </div>
-
-            <!-- Input Bar -->
-            <footer class="chat-footer">
-                <form id="query-form" class="input-form">
-                    <input 
-                        type="text" 
-                        id="query-input" 
-                        class="query-input" 
-                        placeholder="Ask a question about your indexed knowledge..." 
-                        autocomplete="off"
-                        required
-                    >
-                    <button type="submit" id="send-btn" class="btn btn-primary send-btn" aria-label="Send Query">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                            <line x1="22" y1="2" x2="11" y2="13"></line>
-                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                        </svg>
-                    </button>
-                </form>
-            </footer>
-        </main>
-
-        <!-- Citation Detail Drawer Modal -->
-        <div id="citation-modal" class="modal-overlay hidden">
-            <div class="modal-card">
-                <div class="modal-header">
-                    <h3 id="modal-title">Citation Grounding Details</h3>
-                    <button id="close-modal-btn" class="close-btn" aria-label="Close modal">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <div class="modal-meta-row">
-                        <span class="meta-label">Source URI:</span>
-                        <span id="modal-source" class="meta-value font-mono"></span>
-                    </div>
-                    <div class="modal-meta-row" id="modal-page-row">
-                        <span class="meta-label">Page Number:</span>
-                        <span id="modal-page" class="meta-value font-mono"></span>
-                    </div>
-                    <div class="modal-meta-row">
-                        <span class="meta-label">Chunk ID:</span>
-                        <span id="modal-chunk-id" class="meta-value font-mono"></span>
-                    </div>
-                    <div class="modal-snippet-box">
-                        <span class="meta-label">Supporting Evidence Snippet:</span>
-                        <p id="modal-snippet" class="modal-snippet"></p>
-                    </div>
-                </div>
-            </div>
+<body>
+    <div id="api-key-overlay" class="api-key-overlay hidden">
+        <div class="api-key-card">
+            <h2>API key required</h2>
+            <p>This Recall instance requires an API key for uploads and chat.</p>
+            <input type="password" id="api-key-input" class="composer-input" placeholder="Enter API key" autocomplete="off">
+            <button type="button" id="api-key-save-btn" class="btn btn-primary">Continue</button>
         </div>
     </div>
 
-    <script src="/static/app.js"></script>
+    <div class="shell">
+        <button type="button" id="sidebar-toggle" class="sidebar-toggle" aria-label="Toggle library">☰</button>
+
+        <aside class="panel panel-left" id="sidebar">
+            <div class="panel-head">
+                <div class="logo-mark" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                        <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="logo-text">Recall<span class="logo-dot">.</span></h1>
+                    <p class="logo-sub">Knowledge base chat</p>
+                </div>
+            </div>
+
+            <div class="stat-pill" id="index-summary">
+                <span id="index-chunk-count">0 chunks</span>
+                <span class="dot-sep">·</span>
+                <span id="index-doc-count">0 docs</span>
+            </div>
+
+            <div id="drop-zone" class="upload-card">
+                <div class="upload-icon" aria-hidden="true">↑</div>
+                <p class="upload-title">Add documents</p>
+                <p class="upload-hint">PDF, DOCX, MD, TXT, JSON</p>
+                <input type="file" id="file-input" class="sr-only" multiple accept=".pdf,.docx,.md,.txt,.json">
+                <button type="button" id="browse-btn" class="btn btn-secondary">Browse</button>
+            </div>
+            <div id="upload-status" class="toast hidden"></div>
+            <ul id="upload-progress" class="upload-progress hidden"></ul>
+
+            <div class="doc-section">
+                <div class="doc-section-head">
+                    <h2 class="eyebrow">Library</h2>
+                    <input type="search" id="doc-search" class="doc-search" placeholder="Filter files…" aria-label="Filter documents">
+                </div>
+                <ul id="doc-list" class="doc-list">
+                    <li class="doc-list-empty" id="doc-empty">Upload files to get started</li>
+                </ul>
+            </div>
+        </aside>
+
+        <main class="panel panel-main">
+            <header class="topbar">
+                <div class="topbar-left">
+                    <span class="live-dot" aria-hidden="true"></span>
+                    <span class="topbar-label">Model</span>
+                    <select id="model-select" class="model-select" aria-label="Synthesis model"></select>
+                </div>
+                <div class="topbar-right">
+                    <button type="button" id="export-chat-btn" class="btn btn-ghost">Export</button>
+                    <button type="button" id="clear-chat-btn" class="btn btn-ghost">Clear chat</button>
+                </div>
+            </header>
+
+            <div class="chat-scroll">
+                <div id="message-list" class="messages">
+                    <section class="hero" id="welcome-card">
+                        <p class="hero-eyebrow">Enterprise RAG</p>
+                        <h2 class="hero-title">Ask your knowledge base</h2>
+                        <p class="hero-body">Hybrid search, reranking, and cited answers — grounded only in what you upload.</p>
+                        <div id="starter-questions" class="chips"></div>
+                    </section>
+                </div>
+            </div>
+
+            <footer class="composer-wrap">
+                <details id="chat-settings" class="chat-settings">
+                    <summary>Settings</summary>
+                    <div class="settings-grid">
+                        <label class="setting-row">
+                            <span>Top K chunks</span>
+                            <input type="range" id="top-k-slider" min="1" max="10" value="5">
+                            <span id="top-k-value" class="setting-value">5</span>
+                        </label>
+                        <label class="setting-row setting-toggle">
+                            <span>Fast mode (skip rerank)</span>
+                            <input type="checkbox" id="fast-mode-toggle">
+                        </label>
+                    </div>
+                </details>
+                <form id="query-form" class="composer">
+                    <input type="text" id="query-input" class="composer-input" placeholder="Ask a question…" autocomplete="off" required>
+                    <button type="button" id="stop-btn" class="btn btn-ghost stop-btn hidden">Stop</button>
+                    <button type="submit" id="send-btn" class="btn btn-primary">Send →</button>
+                </form>
+            </footer>
+        </main>
+    </div>
+
+    <dialog id="citation-modal" class="citation-dialog">
+        <div class="dialog-head">
+            <h3>Source</h3>
+            <button type="button" id="close-modal-btn" class="btn btn-ghost" aria-label="Close">✕</button>
+        </div>
+        <dl class="dialog-meta">
+            <dt>File</dt><dd id="modal-source" class="mono"></dd>
+            <dt id="modal-page-label">Page</dt><dd id="modal-page" class="mono"></dd>
+            <dt>Chunk</dt><dd id="modal-chunk-id" class="mono"></dd>
+        </dl>
+        <div class="dialog-excerpt">
+            <p class="eyebrow">Excerpt</p>
+            <p id="modal-snippet"></p>
+        </div>
+    </dialog>
+
+    <dialog id="confirm-dialog" class="citation-dialog confirm-dialog">
+        <div class="dialog-head">
+            <h3 id="confirm-title">Confirm</h3>
+        </div>
+        <p id="confirm-body" class="confirm-body"></p>
+        <div class="confirm-actions">
+            <button type="button" id="confirm-cancel-btn" class="btn btn-secondary">Cancel</button>
+            <button type="button" id="confirm-ok-btn" class="btn btn-primary">Delete</button>
+        </div>
+    </dialog>
+
+    <script src="/static/app.js?v=10"></script>
 </body>
 </html>

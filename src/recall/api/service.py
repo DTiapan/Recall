@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import logging
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from typing import Any
 
 from recall.adapters import ChunkingAdapterRegistry
 from recall.core.config import AppConfig, load_config
+from recall.core.model_display import model_display_name
 from recall.core.interfaces import (
     BaseContextCompressor,
     BaseEmbeddingProvider,
@@ -37,7 +39,9 @@ from recall.storage import QdrantVectorStore
 from recall.storage.qdrant_sparse_index import QdrantSparseIndex
 from recall.observability import get_tracer, trace_span
 from recall.synthesis import Synthesizer
-from recall.synthesis.models import SynthesizedResponse
+from recall.synthesis.citations import extract_and_verify_citations
+from recall.synthesis.models import PipelineTiming, SynthesizedResponse
+from recall.synthesis.sandbox import build_sandboxed_context
 
 logger = logging.getLogger(__name__)
 _tracer = get_tracer("recall.service")
@@ -136,17 +140,47 @@ class RAGService:
         if synthesizer:
             self.synthesizer = synthesizer
         else:
-            active_syn = self.config.active_synthesis
+            model_name, api_base, api_key = self._resolve_synthesis_llm()
             self.synthesizer = Synthesizer(
-                model_name=active_syn.model or "ollama/llama3:8b",
-                api_base=self.config.env.ollama_base_url if self.config.mode == "local" else None,
-                api_key=self.config.env.openai_api_key,
+                model_name=model_name,
+                api_base=api_base,
+                api_key=api_key,
                 temperature=self.config.pipeline.synthesis.temperature,
                 max_tokens=self.config.pipeline.synthesis.max_tokens,
             )
 
         self.adapter_registry = ChunkingAdapterRegistry()
         self._ensure_collection(self.default_collection)
+
+    def _resolve_synthesis_llm(
+        self,
+        model_override: str | None = None,
+    ) -> tuple[str, str | None, str | None]:
+        """Pick LLM endpoint: OpenRouter (if key set) > cloud profile > local Ollama/LM Studio."""
+        env = self.config.env
+        if env.openrouter_api_key:
+            model = (
+                model_override
+                or env.local_llm_model
+                or self.config.pipeline.ui.default_model
+                or "openai/gpt-oss-120b"
+            )
+            if not model.startswith("openrouter/"):
+                model = f"openrouter/{model}"
+            return model, None, env.openrouter_api_key
+
+        active_syn = self.config.active_synthesis
+        if self.config.mode == "local":
+            model = (
+                model_override
+                or env.local_llm_model
+                or active_syn.model
+                or "ollama/llama3:8b"
+            )
+            return model, env.ollama_base_url, env.openai_api_key or "lm-studio"
+
+        model = model_override or active_syn.model or "gpt-4o"
+        return model, None, env.openai_api_key
 
     def _get_sparse_index(self, collection_name: str) -> BaseSparseIndex:
         if self.use_qdrant_sparse:
@@ -273,6 +307,7 @@ class RAGService:
         self,
         file_path: Path,
         collection_name: str | None = None,
+        source_uri: str | None = None,
     ) -> int:
         """Parses, chunks, embeds, and indexes a file."""
         col = collection_name or self.default_collection
@@ -296,6 +331,10 @@ class RAGService:
             chunks = self.adapter_registry.process(file_path, config=ingest_config)
             if not chunks:
                 return 0
+
+            if source_uri:
+                for chunk in chunks:
+                    chunk.metadata.source_uri = source_uri
 
             return await self.ingest_chunks_batched(chunks, collection_name=col)
 
@@ -323,6 +362,91 @@ class RAGService:
             chunk = self.build_text_chunk(text=text, source_uri=source_uri, doc_id=doc_id)
             await self.ingest_chunks_batched([chunk], collection_name=col)
             return 1
+
+    def list_documents(self, collection_name: str | None = None) -> list[dict[str, Any]]:
+        """Returns indexed documents grouped by source_uri with chunk counts."""
+        from recall.core.source_uri import is_junk_source_uri
+
+        col = collection_name or self.default_collection
+        if isinstance(self.vector_store, QdrantVectorStore):
+            docs = self.vector_store.list_sources(col)
+            return [doc for doc in docs if not is_junk_source_uri(doc.get("source_uri"))]
+        return []
+
+    def default_model_slug(self) -> str:
+        """OpenRouter-style slug for the server default synthesis model."""
+        if self.config.pipeline.ui.default_model:
+            return self.config.pipeline.ui.default_model
+        if self.config.env.local_llm_model:
+            return self.config.env.local_llm_model.removeprefix("openrouter/")
+        raw = getattr(self.synthesizer, "model_name", "unknown")
+        return raw.removeprefix("openrouter/")
+
+    def allowed_ui_models(self) -> list[dict[str, str]]:
+        """Models exposed to the Web UI dropdown."""
+        configured = self.config.pipeline.ui.models
+        if configured:
+            return [{"id": m.id, "label": m.label} for m in configured]
+        slug = self.default_model_slug()
+        return [{"id": slug, "label": model_display_name(slug)}]
+
+    def validate_model_id(self, model_id: str | None) -> str | None:
+        """Raises ValueError when model_id is not on the UI allowlist."""
+        if model_id is None:
+            return None
+        allowed = {m["id"] for m in self.allowed_ui_models()}
+        if model_id not in allowed:
+            raise ValueError(f"Model '{model_id}' is not in the configured allowlist")
+        return model_id
+
+    def resolve_synthesizer(self, model_id: str | None = None) -> Synthesizer:
+        """Build a per-request synthesizer for the given allowlisted model id."""
+        validated = self.validate_model_id(model_id)
+        slug = validated or self.default_model_slug()
+        model_name, api_base, api_key = self._resolve_synthesis_llm(slug)
+        return Synthesizer(
+            model_name=model_name,
+            api_base=api_base,
+            api_key=api_key,
+            temperature=self.config.pipeline.synthesis.temperature,
+            max_tokens=self.config.pipeline.synthesis.max_tokens,
+        )
+
+    def _synthesizer_for_request(self, model_id: str | None) -> Synthesizer:
+        """Use the startup synthesizer by default; build per-request when model is overridden."""
+        if model_id is None:
+            return self.synthesizer
+        return self.resolve_synthesizer(model_id)
+
+    def model_display_name(self, model_id: str | None = None) -> str:
+        """Human-readable label for a synthesis model."""
+        if model_id:
+            for entry in self.allowed_ui_models():
+                if entry["id"] == model_id:
+                    return entry["label"]
+            return model_display_name(model_id)
+        raw = getattr(self.synthesizer, "model_name", "unknown")
+        if raw.startswith("ollama/"):
+            return raw.removeprefix("ollama/")
+        return model_display_name(raw)
+
+    def get_ui_config(self) -> dict[str, Any]:
+        """Runtime configuration payload for the embedded Web UI."""
+        slug = self.default_model_slug()
+        return {
+            "mode": str(self.config.mode),
+            "model": getattr(self.synthesizer, "model_name", "unknown"),
+            "model_display": self.model_display_name(),
+            "active_model": slug,
+            "default_model": slug,
+            "models": self.allowed_ui_models(),
+            "collection": self.default_collection,
+            "embedding_dimensions": self.embedder.dimensions,
+            "auth_required": bool(self.config.env.rag_api_key),
+            "top_k_default": self.config.pipeline.reranking.top_n,
+            "rerank_enabled": self.config.pipeline.reranking.enabled,
+            "candidate_k": self.config.pipeline.reranking.candidate_k,
+        }
 
     def sparse_chunk_count(self, collection_name: str) -> int:
         if self.use_qdrant_sparse:
@@ -385,62 +509,164 @@ class RAGService:
             )
         return reranked if reranked else candidates[:limit]
 
+    async def _prepare_query(
+        self,
+        question: str,
+        collection_name: str | None,
+        top_k: int,
+        rerank: bool | None = None,
+    ) -> tuple[list[SearchResult] | None, PipelineTiming, SynthesizedResponse | None]:
+        """Retrieve, rerank, and compress candidates. Returns early response when no hits."""
+        rerank_enabled = rerank if rerank is not None else self.config.pipeline.reranking.enabled
+        retrieve_limit = self._rerank_candidate_limit(top_k) if rerank_enabled else top_k
+
+        retrieve_start = time.perf_counter()
+        candidates = await self.search(
+            question,
+            limit=retrieve_limit,
+            collection_name=collection_name,
+        )
+        retrieve_ms = (time.perf_counter() - retrieve_start) * 1000.0
+
+        if not candidates:
+            timing = PipelineTiming(retrieve_ms=round(retrieve_ms, 2), total_ms=round(retrieve_ms, 2))
+            return [], timing, None
+
+        final_candidates = candidates[:top_k]
+        rerank_ms = 0.0
+        if rerank_enabled:
+            score_thresh = self.config.pipeline.reranking.score_threshold
+            rerank_start = time.perf_counter()
+            with trace_span(
+                _tracer,
+                "rerank",
+                {"candidate.count": len(candidates), "top_k": top_k},
+            ):
+                reranked = self.reranker.rerank(
+                    query=question,
+                    candidates=candidates,
+                    top_k=top_k,
+                    score_threshold=score_thresh,
+                )
+            rerank_ms = (time.perf_counter() - rerank_start) * 1000.0
+            final_candidates = reranked if reranked else candidates[:top_k]
+
+        compress_start = time.perf_counter()
+        with trace_span(_tracer, "compress", {"candidate.count": len(final_candidates)}):
+            compressed = self.compressor.compress(
+                query=question,
+                candidates=final_candidates,
+                max_tokens_per_chunk=200,
+                max_total_tokens=1500,
+            )
+        compress_ms = (time.perf_counter() - compress_start) * 1000.0
+
+        timing = PipelineTiming(
+            retrieve_ms=round(retrieve_ms, 2),
+            rerank_ms=round(rerank_ms, 2),
+            compress_ms=round(compress_ms, 2),
+        )
+        return compressed, timing, None
+
+    def delete_document(self, source_uri: str, collection_name: str | None = None) -> int:
+        """Remove all chunks indexed under source_uri. Returns deleted point count."""
+        col = collection_name or self.default_collection
+        if isinstance(self.vector_store, QdrantVectorStore):
+            return self.vector_store.delete_by_source_uri(col, source_uri)
+        return 0
+
     async def query(
         self,
         question: str,
         collection_name: str | None = None,
         top_k: int = 5,
+        model: str | None = None,
+        rerank: bool | None = None,
     ) -> SynthesizedResponse:
         """Executes the full end-to-end RAG pipeline:
         Retrieve -> Rerank -> Compress -> Synthesize with verified citations.
         """
+        pipeline_start = time.perf_counter()
         with trace_span(
             _tracer,
             "query.pipeline",
             {"collection.name": collection_name or self.default_collection, "top_k": top_k},
         ):
-            rerank_enabled = self.config.pipeline.reranking.enabled
-            retrieve_limit = self._rerank_candidate_limit(top_k) if rerank_enabled else top_k
-            candidates = await self.search(
-                question,
-                limit=retrieve_limit,
-                collection_name=collection_name,
+            synthesizer = self._synthesizer_for_request(model)
+            compressed, timing, _early = await self._prepare_query(
+                question, collection_name, top_k, rerank=rerank,
             )
-            if not candidates:
-                return SynthesizedResponse(
-                    answer="Based on the provided documents, I do not have enough information to answer this question.",
-                    citations=[],
-                    unverified_citations=[],
-                    model_name=getattr(self.synthesizer, "model_name", "unknown"),
-                    latency_seconds=0.0,
-                )
 
-            final_candidates = candidates[:top_k]
-            if rerank_enabled:
-                score_thresh = self.config.pipeline.reranking.score_threshold
-                with trace_span(
-                    _tracer,
-                    "rerank",
-                    {"candidate.count": len(candidates), "top_k": top_k},
-                ):
-                    reranked = self.reranker.rerank(
-                        query=question,
-                        candidates=candidates,
-                        top_k=top_k,
-                        score_threshold=score_thresh,
-                    )
-                final_candidates = reranked if reranked else candidates[:top_k]
-
-            with trace_span(_tracer, "compress", {"candidate.count": len(final_candidates)}):
-                compressed = self.compressor.compress(
-                    query=question,
-                    candidates=final_candidates,
-                    max_tokens_per_chunk=200,
-                    max_total_tokens=1500,
-                )
-
-            response = await self.synthesizer.synthesize(
+            synthesis_start = time.perf_counter()
+            response = await synthesizer.synthesize(
                 query=question,
                 candidates=compressed,
             )
-            return response
+            synthesis_ms = (time.perf_counter() - synthesis_start) * 1000.0
+            total_ms = (time.perf_counter() - pipeline_start) * 1000.0
+
+            return response.model_copy(
+                update={
+                    "model_name": synthesizer.model_name,
+                    "latency_seconds": round(total_ms / 1000.0, 4),
+                    "timing": timing.model_copy(
+                        update={
+                            "synthesis_ms": round(synthesis_ms, 2),
+                            "total_ms": round(total_ms, 2),
+                        }
+                    ),
+                }
+            )
+
+    async def query_stream(
+        self,
+        question: str,
+        collection_name: str | None = None,
+        top_k: int = 5,
+        model: str | None = None,
+        rerank: bool | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Streams RAG pipeline events: status, token deltas, and a final done payload."""
+        pipeline_start = time.perf_counter()
+        with trace_span(
+            _tracer,
+            "query.pipeline",
+            {"collection.name": collection_name or self.default_collection, "top_k": top_k},
+        ):
+            synthesizer = self._synthesizer_for_request(model)
+            yield {"event": "status", "phase": "retrieving"}
+            compressed, timing, _early = await self._prepare_query(
+                question, collection_name, top_k, rerank=rerank,
+            )
+
+            yield {"event": "status", "phase": "generating"}
+            synthesis_start = time.perf_counter()
+            answer_parts: list[str] = []
+            async for delta in synthesizer.synthesize_stream(
+                query=question,
+                candidates=compressed,
+            ):
+                answer_parts.append(delta)
+                yield {"event": "token", "delta": delta}
+
+            answer = "".join(answer_parts)
+            synthesis_ms = (time.perf_counter() - synthesis_start) * 1000.0
+            total_ms = (time.perf_counter() - pipeline_start) * 1000.0
+            _, candidate_map = build_sandboxed_context(compressed)
+            verified, unverified = extract_and_verify_citations(answer, candidate_map)
+            final_timing = timing.model_copy(
+                update={
+                    "synthesis_ms": round(synthesis_ms, 2),
+                    "total_ms": round(total_ms, 2),
+                }
+            )
+
+            yield {
+                "event": "done",
+                "answer": answer,
+                "citations": [c.model_dump() for c in verified],
+                "unverified_citations": unverified,
+                "model_name": synthesizer.model_name,
+                "latency_seconds": round(total_ms / 1000.0, 4),
+                "timing": final_timing.model_dump(),
+            }

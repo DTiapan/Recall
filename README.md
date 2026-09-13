@@ -8,12 +8,14 @@
 
 > **Recall** is a turnkey, open-source Retrieval-Augmented Generation (RAG) platform that deploys in one click with zero setup—providing self-hosted hybrid search, table-aware structural chunking, cross-encoder reranking, and dual-mode local (Ollama) and cloud (LiteLLM) synthesis for enterprise knowledge bases scaling from 1,000 to 10M+ documents.
 
+![Recall Web UI — document library, model picker, streaming cited answers, and latency breakdown](docs/images/recall-web-ui.png)
+
 ---
 
 ## Key Highlights
 
 - **Zero-Setup Barrier**: Ready out of the box via single-command deployment (`docker compose up` or `recall serve`). No component sprawl or glue scripts required.
-- **Embedded Web UI**: Out-of-the-box modern dark-mode chat interface with drag-and-drop file ingestion and clickable, page-specific citation popovers.
+- **Embedded Web UI**: Drag-and-drop ingestion, document library with delete, allowlisted model picker (OpenRouter), fast mode, streaming cited answers, and per-stage latency metrics.
 - **Dual-Mode Operation**:
   - **Local Mode**: 100% air-gapped, zero-data-leakage execution using [FastEmbed](https://github.com/qdrant/fastembed) (ONNX CPU), [FlashRank](https://github.com/PrithivirajDamodaran/FlashRank) local cross-encoders, and [Ollama](https://github.com/ollama/ollama) (Llama 3.2 / Mistral).
   - **Cloud Mode**: High-capability cloud synthesis using [LiteLLM](https://github.com/BerriAI/litellm) (OpenAI, Anthropic, Gemini, Cohere) with zero local GPU requirements.

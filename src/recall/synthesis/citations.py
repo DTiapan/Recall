@@ -49,7 +49,9 @@ def extract_and_verify_citations(
         if doc_idx in candidate_map:
             candidate = candidate_map[doc_idx]
             resolved_page = page_num if page_num is not None else candidate.metadata.page_number
-            snippet = candidate.text[:200].replace("\n", " ").strip()
+            snippet = candidate.text[:800].replace("\n", " ").strip()
+            if len(candidate.text) > 800:
+                snippet = f"{snippet}…"
 
             citation = Citation(
                 doc_index=doc_idx,

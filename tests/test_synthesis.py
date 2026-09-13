@@ -114,3 +114,14 @@ async def test_synthesizer_protocol_and_mock_synthesis():
     assert response.citations[0].source_uri == "pg-docs.md"
     assert len(response.unverified_citations) == 0
     assert response.latency_seconds >= 0.0
+
+
+@pytest.mark.asyncio
+async def test_synthesizer_handles_greeting_without_candidates():
+    synthesizer = Synthesizer(
+        model_name="mock-model",
+        mock_response="Hello! Ask me anything about your uploaded documents.",
+    )
+    response = await synthesizer.synthesize(query="hi", candidates=[])
+    assert "Hello" in response.answer
+    assert response.citations == []

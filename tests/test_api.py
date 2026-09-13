@@ -1,12 +1,13 @@
 """Integration tests for Recall FastAPI REST endpoints and Web UI."""
 
+import json
 from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
 from recall.api.app import create_app
 from recall.api.service import RAGService
-from recall.core.config import AppConfig, EnvSettings, PipelineConfig
+from recall.core.config import AppConfig, EnvSettings, PipelineConfig, UIModelOption, UISettings
 from recall.embeddings import MockEmbeddingProvider
 from recall.rerank import MockReranker
 from recall.storage import QdrantVectorStore
@@ -24,7 +25,15 @@ def mock_service():
     )
     config = AppConfig(
         env=EnvSettings(rag_env="test", rag_mode="local"),
-        pipeline=PipelineConfig(),
+        pipeline=PipelineConfig(
+            ui=UISettings(
+                default_model="mock-model",
+                models=[
+                    UIModelOption(id="mock-model", label="Mock Model"),
+                    UIModelOption(id="alt-model", label="Alt Model"),
+                ],
+            ),
+        ),
     )
     return RAGService(
         config=config,
@@ -71,7 +80,9 @@ def test_root_index_endpoint(client):
     response = client.get("/")
     assert response.status_code == 200
     assert "Recall" in response.text
-    assert "Ask Recall Anything" in response.text
+    assert "Ask your knowledge base" in response.text
+    assert "style.css?v=10" in response.text
+    assert "model-select" in response.text
 
 
 def test_ingest_text_and_search(client):
@@ -106,6 +117,39 @@ def test_ingest_file_upload(client, tmp_path: Path):
     assert ingest_res.status_code == 200
     assert ingest_res.json()["chunks_indexed"] >= 1
 
+    search_res = client.post(
+        "/v1/search",
+        json={"query": "Kubernetes CNI", "limit": 3},
+    )
+    assert search_res.status_code == 200
+    results = search_res.json()
+    assert results[0]["metadata"]["source_uri"] == "k8s.txt"
+
+
+def test_chat_stream_endpoint(client):
+    client.post(
+        "/v1/ingest",
+        data={"text": "Streaming replication keeps PostgreSQL replicas in sync.", "source_uri": "pg-stream.md"},
+    )
+
+    events = []
+    with client.stream(
+        "POST",
+        "/v1/chat",
+        json={"query": "How does PostgreSQL streaming work?", "stream": True},
+    ) as response:
+        assert response.status_code == 200
+        assert "text/event-stream" in response.headers.get("content-type", "")
+        for line in response.iter_lines():
+            if line.startswith("data: "):
+                events.append(json.loads(line[6:]))
+
+    assert any(e.get("event") == "status" for e in events)
+    assert any(e.get("event") == "token" for e in events)
+    done = next(e for e in events if e.get("event") == "done")
+    assert "streaming replication" in done["answer"].lower()
+    assert done["citations"][0]["source_uri"] == "pg-stream.md"
+
 
 def test_chat_pipeline_endpoint(client):
     # Ingest source document
@@ -125,6 +169,87 @@ def test_chat_pipeline_endpoint(client):
     assert len(data["citations"]) == 1
     assert data["citations"][0]["doc_index"] == 1
     assert data["citations"][0]["source_uri"] == "pg.md"
+
+
+def test_config_endpoint(client):
+    res = client.get("/v1/config")
+    assert res.status_code == 200
+    data = res.json()
+    assert "models" in data
+    assert len(data["models"]) >= 2
+    assert data["default_model"] == "mock-model"
+    assert data["active_model"] == "mock-model"
+    assert "top_k_default" in data
+    assert "rerank_enabled" in data
+    assert data["auth_required"] is False
+
+
+def test_chat_rejects_unknown_model(client):
+    client.post(
+        "/v1/ingest",
+        data={"text": "Some content.", "source_uri": "doc.md"},
+    )
+    res = client.post(
+        "/v1/chat",
+        json={"query": "What is in the doc?", "model": "not-allowed-model"},
+    )
+    assert res.status_code == 400
+    assert "allowlist" in res.json()["detail"].lower()
+
+
+def test_chat_fast_mode_skips_rerank(client):
+    client.post(
+        "/v1/ingest",
+        data={"text": "Fast mode skips reranking for latency.", "source_uri": "fast.md"},
+    )
+    res = client.post(
+        "/v1/chat",
+        json={"query": "What about fast mode?", "rerank": False},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert data["timing"]["rerank_ms"] == 0.0
+
+
+def test_delete_document_endpoint(client):
+    client.post(
+        "/v1/ingest",
+        data={"text": "Document to delete.", "source_uri": "delete-me.md"},
+    )
+    listed = client.get("/v1/documents").json()
+    assert "delete-me.md" in [d["source_uri"] for d in listed["documents"]]
+
+    del_res = client.delete("/v1/documents?source_uri=delete-me.md")
+    assert del_res.status_code == 200
+    assert del_res.json()["chunks_deleted"] >= 1
+
+    listed_after = client.get("/v1/documents").json()
+    assert "delete-me.md" not in [d["source_uri"] for d in listed_after["documents"]]
+
+    search_res = client.post(
+        "/v1/search",
+        json={"query": "Document to delete", "limit": 5},
+    )
+    assert all("delete-me" not in r["metadata"]["source_uri"] for r in search_res.json())
+
+
+def test_documents_endpoint(client):
+    client.post(
+        "/v1/ingest",
+        data={"text": "Kubernetes networking uses CNI plugins.", "source_uri": "k8s-guide.md"},
+    )
+    client.post(
+        "/v1/ingest",
+        data={"text": "Orphan tempfile chunk.", "source_uri": "tmp1nk3baf4.pdf"},
+    )
+    res = client.get("/v1/documents")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["document_count"] >= 1
+    assert data["total_chunks"] >= 1
+    uris = [doc["source_uri"] for doc in data["documents"]]
+    assert "k8s-guide.md" in uris
+    assert "tmp1nk3baf4.pdf" not in uris
 
 
 def test_stats_endpoint(client):

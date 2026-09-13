@@ -1,275 +1,644 @@
 /**
- * Recall Web UI Client
- * Handles drag-and-drop document upload, real-time chat, and interactive citation inspection.
+ * Recall Web UI v8
  */
 
 document.addEventListener("DOMContentLoaded", () => {
-    // Elements
     const dropZone = document.getElementById("drop-zone");
     const fileInput = document.getElementById("file-input");
     const browseBtn = document.getElementById("browse-btn");
     const uploadStatus = document.getElementById("upload-status");
-    const statChunks = document.getElementById("stat-chunks");
+    const uploadProgress = document.getElementById("upload-progress");
+    const docList = document.getElementById("doc-list");
+    const docSearch = document.getElementById("doc-search");
+    const indexChunkCount = document.getElementById("index-chunk-count");
+    const indexDocCount = document.getElementById("index-doc-count");
+    const modelSelect = document.getElementById("model-select");
     const messageList = document.getElementById("message-list");
     const queryForm = document.getElementById("query-form");
     const queryInput = document.getElementById("query-input");
+    const sendBtn = document.getElementById("send-btn");
+    const stopBtn = document.getElementById("stop-btn");
     const clearChatBtn = document.getElementById("clear-chat-btn");
-
-    // Modal elements
+    const exportChatBtn = document.getElementById("export-chat-btn");
     const citationModal = document.getElementById("citation-modal");
+    const confirmDialog = document.getElementById("confirm-dialog");
+    const confirmTitle = document.getElementById("confirm-title");
+    const confirmBody = document.getElementById("confirm-body");
+    const confirmCancelBtn = document.getElementById("confirm-cancel-btn");
+    const confirmOkBtn = document.getElementById("confirm-ok-btn");
     const closeModalBtn = document.getElementById("close-modal-btn");
     const modalSource = document.getElementById("modal-source");
     const modalPage = document.getElementById("modal-page");
-    const modalPageRow = document.getElementById("modal-page-row");
+    const modalPageLabel = document.getElementById("modal-page-label");
     const modalChunkId = document.getElementById("modal-chunk-id");
     const modalSnippet = document.getElementById("modal-snippet");
+    const topKSlider = document.getElementById("top-k-slider");
+    const topKValue = document.getElementById("top-k-value");
+    const fastModeToggle = document.getElementById("fast-mode-toggle");
+    const apiKeyOverlay = document.getElementById("api-key-overlay");
+    const apiKeyInput = document.getElementById("api-key-input");
+    const apiKeySaveBtn = document.getElementById("api-key-save-btn");
+    const sidebarToggle = document.getElementById("sidebar-toggle");
+    const sidebar = document.getElementById("sidebar");
 
-    // State
     let activeCitations = {};
+    let isStreaming = false;
+    let streamAbort = null;
+    let indexedDocs = [];
+    let uiConfig = {};
+    let authRequired = false;
 
-    // Initial stats fetch
-    fetchStats();
+    const STORAGE = {
+        model: "recall.model",
+        topK: "recall.top_k",
+        fastMode: "recall.fast_mode",
+        apiKey: "recall.api_key",
+    };
 
-    // File Upload Setup
-    browseBtn.addEventListener("click", () => fileInput.click());
-    dropZone.addEventListener("click", (e) => {
-        if (e.target !== browseBtn) fileInput.click();
-    });
+    const DEFAULT_STARTERS = [
+        "What topics are in my documents?",
+        "Summarize the key policies",
+        "What are the main technical requirements?",
+    ];
 
-    dropZone.addEventListener("dragover", (e) => {
-        e.preventDefault();
-        dropZone.classList.add("dragover");
-    });
-
-    dropZone.addEventListener("dragleave", () => {
-        dropZone.classList.remove("dragover");
-    });
-
+    browseBtn.addEventListener("click", (e) => { e.stopPropagation(); fileInput.click(); });
+    dropZone.addEventListener("click", () => fileInput.click());
+    dropZone.addEventListener("dragover", (e) => { e.preventDefault(); dropZone.classList.add("dragover"); });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
     dropZone.addEventListener("drop", (e) => {
         e.preventDefault();
         dropZone.classList.remove("dragover");
-        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-            handleFileUpload(e.dataTransfer.files);
-        }
+        if (e.dataTransfer.files?.length) handleFileUpload(e.dataTransfer.files);
+    });
+    fileInput.addEventListener("change", () => {
+        if (fileInput.files?.length) handleFileUpload(fileInput.files);
     });
 
-    fileInput.addEventListener("change", () => {
-        if (fileInput.files && fileInput.files.length > 0) {
-            handleFileUpload(fileInput.files);
-        }
+    stopBtn.addEventListener("click", () => streamAbort?.abort());
+    clearChatBtn.addEventListener("click", () => {
+        messageList.innerHTML = "";
+        renderWelcome();
     });
+    exportChatBtn.addEventListener("click", exportChat);
+    closeModalBtn.addEventListener("click", () => citationModal.close());
+    citationModal.addEventListener("click", (e) => {
+        if (e.target === citationModal) citationModal.close();
+    });
+    confirmCancelBtn.addEventListener("click", () => confirmDialog.close());
+
+    queryForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const q = queryInput.value.trim();
+        if (!q || isStreaming) return;
+        submitQuery(q);
+    });
+
+    modelSelect.addEventListener("change", () => {
+        localStorage.setItem(STORAGE.model, modelSelect.value);
+    });
+
+    topKSlider.addEventListener("input", () => {
+        topKValue.textContent = topKSlider.value;
+        localStorage.setItem(STORAGE.topK, topKSlider.value);
+    });
+
+    fastModeToggle.addEventListener("change", () => {
+        localStorage.setItem(STORAGE.fastMode, fastModeToggle.checked ? "1" : "0");
+    });
+
+    docSearch.addEventListener("input", () => renderDocList(filterDocs(indexedDocs)));
+
+    apiKeySaveBtn.addEventListener("click", () => {
+        const key = apiKeyInput.value.trim();
+        if (!key) return;
+        sessionStorage.setItem(STORAGE.apiKey, key);
+        apiKeyOverlay.classList.add("hidden");
+        fetchConfig();
+        fetchDocuments();
+    });
+
+    sidebarToggle.addEventListener("click", () => {
+        sidebar.classList.toggle("sidebar-open");
+    });
+
+    window.addEventListener("focus", () => fetchConfig());
+    setInterval(() => fetchConfig(), 60000);
+
+    loadSettings();
+    fetchConfig().then(() => fetchDocuments());
+
+    function loadSettings() {
+        const savedTopK = localStorage.getItem(STORAGE.topK);
+        if (savedTopK) {
+            topKSlider.value = savedTopK;
+            topKValue.textContent = savedTopK;
+        }
+        fastModeToggle.checked = localStorage.getItem(STORAGE.fastMode) === "1";
+    }
+
+    function apiHeaders(extra = {}) {
+        const headers = { ...extra };
+        const key = sessionStorage.getItem(STORAGE.apiKey);
+        if (key) headers.Authorization = `Bearer ${key}`;
+        return headers;
+    }
+
+    async function fetchConfig() {
+        try {
+            const res = await fetch("/v1/config");
+            if (!res.ok) return;
+            uiConfig = await res.json();
+            authRequired = Boolean(uiConfig.auth_required);
+            if (authRequired && !sessionStorage.getItem(STORAGE.apiKey)) {
+                apiKeyOverlay.classList.remove("hidden");
+            }
+            populateModelSelect(uiConfig.models || [], uiConfig.default_model);
+            if (uiConfig.top_k_default) {
+                topKSlider.max = Math.max(10, uiConfig.top_k_default);
+            }
+        } catch (_) { /* ignore */ }
+    }
+
+    function populateModelSelect(models, defaultModel) {
+        if (!modelSelect) return;
+
+        let list = models;
+        if (!list.length && uiConfig.model) {
+            // Back-compat when server has not been restarted (old /v1/config shape)
+            const slug = String(uiConfig.model).replace(/^openrouter\//, "");
+            list = [{
+                id: slug,
+                label: uiConfig.model_display || slug,
+            }];
+            defaultModel = defaultModel || slug;
+        }
+
+        if (!list.length) {
+            modelSelect.innerHTML = "<option value=\"\">No models — restart server</option>";
+            return;
+        }
+
+        const saved = localStorage.getItem(STORAGE.model);
+        modelSelect.innerHTML = "";
+        list.forEach((m) => {
+            const opt = document.createElement("option");
+            opt.value = m.id;
+            opt.textContent = m.label;
+            opt.title = m.id;
+            modelSelect.appendChild(opt);
+        });
+        const pick = saved && list.some((m) => m.id === saved) ? saved : defaultModel;
+        if (pick && list.some((m) => m.id === pick)) modelSelect.value = pick;
+    }
+
+    async function fetchDocuments() {
+        try {
+            const res = await fetch("/v1/documents");
+            if (!res.ok) return;
+            const data = await res.json();
+            indexedDocs = (data.documents || []).filter((d) => !isTempSource(d.source_uri));
+            if (indexChunkCount) indexChunkCount.textContent = `${data.total_chunks || 0} chunks`;
+            if (indexDocCount) indexDocCount.textContent = `${indexedDocs.length} docs`;
+            renderDocList(filterDocs(indexedDocs));
+            renderStarters(document.getElementById("starter-questions"));
+        } catch (_) { /* ignore */ }
+    }
+
+    function filterDocs(docs) {
+        const q = (docSearch?.value || "").trim().toLowerCase();
+        if (!q) return docs;
+        return docs.filter((d) => basename(d.source_uri).toLowerCase().includes(q));
+    }
+
+    function isTempSource(uri) {
+        const text = uri || "";
+        const lower = text.toLowerCase();
+        if (lower.includes("/tmp/") || lower.includes("/var/folders/")) return true;
+        const name = text.split("/").pop() || "";
+        return /^tmp[a-z0-9]+(\.[a-z0-9]+)?$/i.test(name);
+    }
+
+    function renderDocList(docs) {
+        docList.innerHTML = "";
+        if (!docs.length) {
+            const li = document.createElement("li");
+            li.className = "doc-list-empty";
+            li.textContent = docSearch?.value ? "No matching documents" : "Upload files to get started";
+            docList.appendChild(li);
+            return;
+        }
+        docs.forEach((doc) => {
+            const li = document.createElement("li");
+            li.className = "doc-list-item";
+
+            const main = document.createElement("button");
+            main.type = "button";
+            main.className = "doc-list-main";
+            main.innerHTML = `
+                <span class="doc-name">${escapeHtml(basename(doc.source_uri))}</span>
+                <span class="doc-meta">${doc.chunk_count} chunk${doc.chunk_count === 1 ? "" : "s"}${doc.file_type ? ` · ${doc.file_type}` : ""}</span>
+            `;
+            main.title = doc.source_uri;
+            main.addEventListener("click", () => {
+                queryInput.value = `What does ${basename(doc.source_uri)} cover?`;
+                queryInput.focus();
+            });
+
+            const del = document.createElement("button");
+            del.type = "button";
+            del.className = "doc-delete-btn";
+            del.setAttribute("aria-label", `Delete ${basename(doc.source_uri)}`);
+            del.textContent = "✕";
+            del.addEventListener("click", (e) => {
+                e.stopPropagation();
+                confirmDelete(doc.source_uri);
+            });
+
+            li.appendChild(main);
+            li.appendChild(del);
+            docList.appendChild(li);
+        });
+    }
+
+    function confirmDelete(sourceUri) {
+        confirmTitle.textContent = "Delete document";
+        confirmBody.textContent = `Remove all chunks for "${basename(sourceUri)}" from the knowledge base?`;
+        confirmDialog.showModal();
+        confirmOkBtn.onclick = async () => {
+            confirmDialog.close();
+            try {
+                const res = await fetch(
+                    `/v1/documents?source_uri=${encodeURIComponent(sourceUri)}`,
+                    { method: "DELETE", headers: apiHeaders() },
+                );
+                if (!res.ok) throw new Error((await res.json()).detail || "Delete failed");
+                const data = await res.json();
+                showToast(`Deleted ${data.chunks_deleted} chunk(s) from ${basename(sourceUri)}`, "success");
+                await fetchDocuments();
+            } catch (err) {
+                showToast(err.message, "error");
+            }
+        };
+    }
+
+    function renderStarters(container) {
+        if (!container) return;
+        container.innerHTML = "";
+        buildStarters().forEach((q) => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "chip-btn";
+            btn.textContent = q;
+            btn.addEventListener("click", () => submitQuery(q));
+            container.appendChild(btn);
+        });
+    }
+
+    function buildStarters() {
+        const ranked = [...indexedDocs].sort((a, b) => (b.chunk_count || 0) - (a.chunk_count || 0));
+        const fromDocs = ranked.slice(0, 3).map((d) => `What does ${basename(d.source_uri)} cover?`);
+        return [...fromDocs, ...DEFAULT_STARTERS].slice(0, 4);
+    }
+
+    function renderWelcome() {
+        const hero = document.createElement("section");
+        hero.className = "hero";
+        hero.id = "welcome-card";
+        hero.innerHTML = `
+            <p class="hero-eyebrow">Enterprise RAG</p>
+            <h2 class="hero-title">Ask your knowledge base</h2>
+            <p class="hero-body">Hybrid search, reranking, and cited answers — grounded only in what you upload.</p>
+            <div id="starter-questions" class="chips"></div>
+        `;
+        messageList.appendChild(hero);
+        renderStarters(hero.querySelector("#starter-questions"));
+    }
 
     async function handleFileUpload(files) {
-        showStatus(`Uploading and indexing ${files.length} file(s)...`, "loading");
+        const fileArr = Array.from(files);
+        uploadProgress.classList.remove("hidden");
+        uploadProgress.innerHTML = "";
+        fileArr.forEach((file) => {
+            const li = document.createElement("li");
+            li.className = "upload-progress-item";
+            li.dataset.filename = file.name;
+            li.textContent = `${file.name} — indexing…`;
+            uploadProgress.appendChild(li);
+        });
 
-        for (const file of files) {
-            const formData = new FormData();
-            formData.append("file", file);
-
+        for (let i = 0; i < fileArr.length; i++) {
+            const file = fileArr[i];
+            const row = uploadProgress.querySelector(`[data-filename="${CSS.escape(file.name)}"]`);
+            const fd = new FormData();
+            fd.append("file", file);
             try {
-                const response = await fetch("/v1/ingest", {
-                    method: "POST",
-                    body: formData,
-                });
-
-                if (!response.ok) {
-                    const err = await response.json();
-                    throw new Error(err.detail || "Upload failed");
+                const res = await fetch("/v1/ingest", { method: "POST", body: fd, headers: apiHeaders() });
+                if (!res.ok) throw new Error((await res.json()).detail || "Upload failed");
+                const data = await res.json();
+                if (row) {
+                    row.textContent = `${file.name} — ${data.chunks_indexed} chunk(s) indexed`;
+                    row.classList.add("done");
                 }
-
-                const data = await response.json();
-                showStatus(`Indexed ${data.chunks_indexed} chunks from ${file.name}!`, "success");
-                fetchStats();
             } catch (err) {
-                showStatus(`Error uploading ${file.name}: ${err.message}`, "error");
+                if (row) {
+                    row.textContent = `${file.name} — failed: ${err.message}`;
+                    row.classList.add("error");
+                }
+                showToast(err.message, "error");
                 break;
             }
         }
+        setTimeout(() => uploadProgress.classList.add("hidden"), 4000);
+        await fetchDocuments();
+        fileInput.value = "";
     }
 
-    function showStatus(msg, type) {
+    function showToast(msg, type) {
         uploadStatus.textContent = msg;
-        uploadStatus.className = `status-indicator ${type}`;
+        uploadStatus.className = `toast ${type}`;
         uploadStatus.classList.remove("hidden");
-        if (type === "success") {
-            setTimeout(() => {
-                uploadStatus.classList.add("hidden");
-            }, 4000);
-        }
+        if (type === "success") setTimeout(() => uploadStatus.classList.add("hidden"), 3500);
     }
 
-    async function fetchStats() {
-        try {
-            const res = await fetch("/v1/stats");
-            if (res.ok) {
-                const data = await res.json();
-                if (statChunks && data.total_chunks !== undefined) {
-                    statChunks.textContent = `${data.total_chunks} chunks`;
-                }
-            }
-        } catch (e) {
-            console.debug("Could not fetch stats:", e);
-        }
+    function basename(uri) {
+        return (uri || "Unknown").split("/").pop() || uri;
     }
 
-    // Chat Submission
-    queryForm.addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const query = queryInput.value.trim();
-        if (!query) return;
+    function escapeHtml(text) {
+        return String(text)
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+    }
 
-        // Clear welcome card if present
-        const welcome = document.querySelector(".welcome-card");
-        if (welcome) welcome.remove();
+    function renderAnswerHtml(answer, msgId) {
+        let html = escapeHtml(answer);
+        html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+        html = html.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, "<em>$1</em>");
+        html = blocksToParagraphs(html);
+        html = html.replace(
+            /\[Doc\s*(\d+)(?:,\s*(?:p\.?|page)\s*(\d+))?\]/gi,
+            (_, idx, page) => {
+                const pl = page ? `, p. ${page}` : "";
+                return `<button type="button" class="cite-inline" data-msg="${msgId}" data-idx="${idx}">Doc ${idx}${pl}</button>`;
+            },
+        );
+        return html;
+    }
 
-        // Append User Message
+    function blocksToParagraphs(html) {
+        return html
+            .split(/\n{2,}/)
+            .map((block) => `<p>${block.replace(/\n/g, "<br>")}</p>`)
+            .join("");
+    }
+
+    function currentModelLabel(meta) {
+        if (modelSelect?.selectedOptions?.[0]?.textContent) {
+            return modelSelect.selectedOptions[0].textContent;
+        }
+        if (meta?.model_name) {
+            return String(meta.model_name).replace(/^openrouter\//, "").split("/").pop();
+        }
+        return "";
+    }
+
+    function formatLatency(meta) {
+        const model = currentModelLabel(meta);
+        const modelPart = model ? `${model} · ` : "";
+        if (!meta?.timing) {
+            return meta?.latency_seconds
+                ? `${modelPart}Total ${(meta.latency_seconds * 1000).toFixed(0)}ms`
+                : model;
+        }
+        const t = meta.timing;
+        return `${modelPart}Retrieve ${t.retrieve_ms.toFixed(0)}ms · Rerank ${t.rerank_ms.toFixed(0)}ms · LLM ${t.synthesis_ms.toFixed(0)}ms · Total ${t.total_ms.toFixed(0)}ms`;
+    }
+
+    function chatPayload(query) {
+        const payload = {
+            query,
+            top_k: parseInt(topKSlider.value, 10) || 5,
+            stream: true,
+        };
+        if (modelSelect?.value) payload.model = modelSelect.value;
+        if (fastModeToggle.checked) payload.rerank = false;
+        return payload;
+    }
+
+    function submitQuery(query) {
+        document.getElementById("welcome-card")?.remove();
         appendMessage("user", query);
         queryInput.value = "";
+        const id = appendMessage("assistant", "Searching documents…", true);
+        startStream(query, id);
+    }
 
-        // Append Temporary Assistant Loading Message
-        const loadingMsgId = appendMessage("assistant", "Searching and synthesizing verified answer...", true);
-
+    async function startStream(query, msgId) {
+        isStreaming = true;
+        sendBtn.disabled = true;
+        queryInput.disabled = true;
+        stopBtn.classList.remove("hidden");
+        streamAbort = new AbortController();
         try {
-            const res = await fetch("/v1/chat", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ query: query, top_k: 5 }),
-            });
-
-            if (!res.ok) {
-                throw new Error(`HTTP ${res.status}`);
-            }
-
-            const data = await res.json();
-            updateAssistantMessage(loadingMsgId, data.answer, data.citations);
+            await streamChat(query, msgId, streamAbort.signal);
         } catch (err) {
-            updateAssistantMessage(loadingMsgId, `Error communicating with Recall engine: ${err.message}`, []);
+            if (err.name !== "AbortError") finalizeMessage(msgId, `Error: ${err.message}`, [], {});
+        } finally {
+            isStreaming = false;
+            sendBtn.disabled = false;
+            queryInput.disabled = false;
+            stopBtn.classList.add("hidden");
+            streamAbort = null;
+            queryInput.focus();
         }
-    });
+    }
 
-    clearChatBtn.addEventListener("click", () => {
-        messageList.innerHTML = `
-            <div class="welcome-card">
-                <div class="welcome-icon">
-                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                        <circle cx="12" cy="12" r="10"></circle>
-                        <path d="M12 16v-4"></path>
-                        <path d="M12 8h.01"></path>
-                    </svg>
-                </div>
-                <h2>Ask Recall Anything Across Your Enterprise Documents</h2>
-                <p>Every answer is synthesized using concurrent hybrid search (Dense HNSW + BM25+), deep cross-encoder reranking, and citation attribution with exact document citations.</p>
-            </div>
-        `;
-    });
+    async function streamChat(query, msgId, signal) {
+        const res = await fetch("/v1/chat", {
+            method: "POST",
+            headers: apiHeaders({ "Content-Type": "application/json", Accept: "text/event-stream" }),
+            body: JSON.stringify(chatPayload(query)),
+            signal,
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || `HTTP ${res.status}`);
+        }
 
-    function appendMessage(role, text, isLoading = false) {
-        const id = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-        const wrapper = document.createElement("div");
-        wrapper.id = id;
-        wrapper.className = `chat-message ${role}`;
+        const bubble = document.getElementById(msgId)?.querySelector(".msg-bubble");
+        if (!bubble) return;
 
-        const avatar = document.createElement("div");
-        avatar.className = "chat-avatar";
-        avatar.textContent = role === "assistant" ? "R" : "U";
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let text = "";
 
-        const contentWrapper = document.createElement("div");
-        contentWrapper.className = "message-content-wrapper";
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const parts = buffer.split("\n\n");
+            buffer = parts.pop() || "";
 
-        const content = document.createElement("div");
-        content.className = "message-content";
-        if (isLoading) content.classList.add("loading-text");
-        content.textContent = text;
+            for (const part of parts) {
+                const line = part.trim();
+                if (!line.startsWith("data: ")) continue;
+                const ev = JSON.parse(line.slice(6));
 
-        contentWrapper.appendChild(content);
+                if (ev.event === "status") {
+                    if (ev.phase === "retrieving") {
+                        bubble.className = "msg-bubble loading";
+                        bubble.textContent = "Searching documents…";
+                    } else if (ev.phase === "generating") {
+                        bubble.className = "msg-bubble streaming";
+                        bubble.textContent = "";
+                    }
+                } else if (ev.event === "token") {
+                    bubble.className = "msg-bubble streaming";
+                    text += ev.delta;
+                    bubble.textContent = text;
+                } else if (ev.event === "done") {
+                    finalizeMessage(msgId, ev.answer || text, ev.citations || [], ev);
+                }
+                messageList.parentElement.scrollTop = messageList.parentElement.scrollHeight;
+            }
+        }
+    }
+
+    function appendMessage(role, text, loading = false) {
+        const id = `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+        const el = document.createElement("article");
+        el.id = id;
+        el.className = `msg ${role}`;
+        el.dataset.role = role;
+        el.dataset.rawText = text;
+
+        const body = document.createElement("div");
+        body.className = "msg-body";
+
+        const label = document.createElement("p");
+        label.className = "msg-label";
+        label.textContent = role === "assistant" ? "Recall" : "You";
+        body.appendChild(label);
+
+        const bubble = document.createElement("div");
+        bubble.className = `msg-bubble${loading ? " loading" : ""}`;
+        bubble.textContent = text;
+        body.appendChild(bubble);
+
         if (role === "assistant") {
-            wrapper.appendChild(avatar);
-            wrapper.appendChild(contentWrapper);
-        } else {
-            wrapper.appendChild(contentWrapper);
-            wrapper.appendChild(avatar);
+            const actions = document.createElement("div");
+            actions.className = "msg-actions";
+            const copy = document.createElement("button");
+            copy.type = "button";
+            copy.className = "btn btn-ghost";
+            copy.textContent = "Copy";
+            copy.addEventListener("click", () => {
+                navigator.clipboard.writeText(bubble.textContent || "").then(() => {
+                    copy.textContent = "Copied";
+                    setTimeout(() => { copy.textContent = "Copy"; }, 1200);
+                });
+            });
+            actions.appendChild(copy);
+            body.appendChild(actions);
         }
 
-        messageList.appendChild(wrapper);
-        messageList.scrollTop = messageList.scrollHeight;
+        el.appendChild(body);
+        messageList.appendChild(el);
+        messageList.parentElement.scrollTop = messageList.parentElement.scrollHeight;
         return id;
     }
 
-    function updateAssistantMessage(msgId, rawAnswer, citations = []) {
-        const msgEl = document.getElementById(msgId);
-        if (!msgEl) return;
+    function finalizeMessage(msgId, answer, citations, meta) {
+        const root = document.getElementById(msgId);
+        if (!root) return;
+        root.dataset.rawText = answer;
+        const body = root.querySelector(".msg-body");
+        body.querySelectorAll(".cite-row, .latency").forEach((n) => n.remove());
 
-        const contentEl = msgEl.querySelector(".message-content");
-        contentEl.classList.remove("loading-text");
-        contentEl.innerHTML = "";
+        const bubble = root.querySelector(".msg-bubble");
+        bubble.className = "msg-bubble";
 
-        // Store citations keyed by doc_index
-        const citationsByDoc = {};
-        citations.forEach(c => {
-            citationsByDoc[c.doc_index] = c;
-            activeCitations[`${msgId}-${c.doc_index}`] = c;
-        });
+        citations.forEach((c) => { activeCitations[`${msgId}-${c.doc_index}`] = c; });
 
-        // Parse [Doc X] and [Doc X, p. Y] into interactive pills
-        const regex = /\[Doc\s*(\d+)(?:,\s*(?:p\.?|page)\s*(\d+))?\]/gi;
-        const formatted = rawAnswer.replace(regex, (match, docIdx, page) => {
-            const pageLabel = page ? `, p. ${page}` : "";
-            return `<button class="citation-pill" data-msg-id="${msgId}" data-doc-idx="${docIdx}">Doc ${docIdx}${pageLabel}</button>`;
-        });
+        bubble.innerHTML = renderAnswerHtml(answer, msgId);
 
-        contentEl.innerHTML = formatted;
-
-        // Attach click listeners to citations
-        contentEl.querySelectorAll(".citation-pill").forEach(pill => {
-            pill.addEventListener("click", () => {
-                const docIdx = pill.getAttribute("data-doc-idx");
-                const mId = pill.getAttribute("data-msg-id");
-                const citation = activeCitations[`${mId}-${docIdx}`];
-                if (citation) openCitationModal(citation);
+        bubble.querySelectorAll(".cite-inline").forEach((btn) => {
+            btn.addEventListener("click", () => {
+                const c = activeCitations[`${btn.dataset.msg}-${btn.dataset.idx}`];
+                if (c) openCitation(c);
             });
         });
 
-        // Add Citations Footer if verified citations exist
-        if (citations.length > 0) {
-            const contentWrapper = msgEl.querySelector(".message-content-wrapper");
-            const footer = document.createElement("div");
-            footer.className = "citations-footer";
-
-            const label = document.createElement("span");
-            label.className = "citations-footer-label";
-            label.textContent = "Verified Sources:";
-            footer.appendChild(label);
-
-            citations.forEach(c => {
-                const btn = document.createElement("button");
-                btn.className = "citation-pill";
-                const shortSrc = c.source_uri ? c.source_uri.split("/").pop() : `Doc ${c.doc_index}`;
-                btn.textContent = `[${c.doc_index}] ${shortSrc}`;
-                btn.addEventListener("click", () => openCitationModal(c));
-                footer.appendChild(btn);
-            });
-
-            contentWrapper.appendChild(footer);
+        const copyBtn = body.querySelector(".msg-actions .btn");
+        if (copyBtn) {
+            copyBtn.onclick = () => {
+                navigator.clipboard.writeText(answer).then(() => {
+                    copyBtn.textContent = "Copied";
+                    setTimeout(() => { copyBtn.textContent = "Copy"; }, 1200);
+                });
+            };
         }
 
-        messageList.scrollTop = messageList.scrollHeight;
+        if (citations.length) {
+            const row = document.createElement("div");
+            row.className = "cite-row";
+            const label = document.createElement("span");
+            label.className = "cite-label";
+            label.textContent = "Sources";
+            row.appendChild(label);
+            citations.forEach((c) => {
+                const b = document.createElement("button");
+                b.type = "button";
+                b.className = "cite-btn";
+                b.textContent = `[${c.doc_index}] ${basename(c.source_uri)}`;
+                b.addEventListener("click", () => openCitation(c));
+                row.appendChild(b);
+            });
+            body.insertBefore(row, body.querySelector(".msg-actions"));
+        }
+
+        const lat = formatLatency(meta);
+        if (lat) {
+            const p = document.createElement("p");
+            p.className = "latency";
+            p.textContent = lat;
+            body.insertBefore(p, body.querySelector(".msg-actions"));
+        }
+
+        messageList.parentElement.scrollTop = messageList.parentElement.scrollHeight;
     }
 
-    function openCitationModal(c) {
-        modalSource.textContent = c.source_uri || "Direct Input Document";
-        if (c.page_number !== null && c.page_number !== undefined) {
-            modalPage.textContent = `Page ${c.page_number}`;
-            modalPageRow.classList.remove("hidden");
+    function exportChat() {
+        const lines = ["# Recall chat export", ""];
+        messageList.querySelectorAll(".msg").forEach((msg) => {
+            const role = msg.dataset.role === "assistant" ? "Recall" : "You";
+            const text = msg.dataset.rawText || msg.querySelector(".msg-bubble")?.textContent || "";
+            lines.push(`## ${role}`, "", text, "");
+        });
+        const blob = new Blob([lines.join("\n")], { type: "text/markdown" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `recall-chat-${Date.now()}.md`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+    }
+
+    function openCitation(c) {
+        modalSource.textContent = basename(c.source_uri);
+        modalSource.title = c.source_uri || "";
+        if (c.page_number != null) {
+            modalPage.textContent = String(c.page_number);
+            modalPageLabel.style.display = "";
+            modalPage.style.display = "";
         } else {
-            modalPageRow.classList.add("hidden");
+            modalPageLabel.style.display = "none";
+            modalPage.style.display = "none";
         }
         modalChunkId.textContent = c.chunk_id;
         modalSnippet.textContent = c.snippet;
-        citationModal.classList.remove("hidden");
+        citationModal.showModal();
     }
-
-    closeModalBtn.addEventListener("click", () => citationModal.classList.add("hidden"));
-    citationModal.addEventListener("click", (e) => {
-        if (e.target === citationModal) citationModal.classList.add("hidden");
-    });
 });

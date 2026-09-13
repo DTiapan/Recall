@@ -97,6 +97,19 @@ class ObservabilitySettings(BaseModel):
     service_name: str = "recall-kit"
 
 
+class UIModelOption(BaseModel):
+    id: str = Field(description="OpenRouter model slug, e.g. openai/gpt-oss-120b")
+    label: str = Field(description="Human-readable label for the UI dropdown")
+
+
+class UISettings(BaseModel):
+    models: list[UIModelOption] = Field(default_factory=list)
+    default_model: str | None = Field(
+        default=None,
+        description="Default UI model id; falls back to LOCAL_LLM_MODEL / server default",
+    )
+
+
 class SynthesisSettings(BaseModel):
     temperature: float = 0.1
     max_tokens: int = 1024
@@ -127,6 +140,7 @@ class PipelineConfig(BaseModel):
     reranking: RerankingSettings = Field(default_factory=RerankingSettings)
     synthesis: SynthesisSettings = Field(default_factory=SynthesisSettings)
     observability: ObservabilitySettings = Field(default_factory=ObservabilitySettings)
+    ui: UISettings = Field(default_factory=UISettings)
 
 
 class EnvSettings(BaseSettings):
@@ -155,8 +169,14 @@ class EnvSettings(BaseSettings):
     anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
     gemini_api_key: str | None = Field(default=None, alias="GEMINI_API_KEY")
     cohere_api_key: str | None = Field(default=None, alias="COHERE_API_KEY")
+    openrouter_api_key: str | None = Field(default=None, alias="OPENROUTER_API_KEY")
 
     ollama_base_url: str = Field(default="http://localhost:11434", alias="OLLAMA_BASE_URL")
+    local_llm_model: str | None = Field(
+        default=None,
+        alias="LOCAL_LLM_MODEL",
+        description="Override synthesis model (e.g. openai/gpt-oss-120b)",
+    )
 
     otel_exporter_otlp_endpoint: str | None = Field(default=None, alias="OTEL_EXPORTER_OTLP_ENDPOINT")
     otel_service_name: str | None = Field(default=None, alias="OTEL_SERVICE_NAME")

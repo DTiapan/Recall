@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 import shutil
 import tempfile
@@ -11,7 +13,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -34,6 +36,9 @@ class ChatRequest(BaseModel):
     query: str = Field(..., description="User question")
     collection: str = Field(default="documents")
     top_k: int = Field(default=5, ge=1, le=20)
+    stream: bool = Field(default=False, description="Stream answer tokens via SSE")
+    model: str | None = Field(default=None, description="Allowlisted OpenRouter model id")
+    rerank: bool | None = Field(default=None, description="Override reranking; false skips FlashRank")
 
 
 def _configure_observability(service: RAGService) -> bool:
@@ -87,14 +92,29 @@ def create_app(rag_service: RAGService | None = None) -> FastAPI:
 
     # Mount static assets
     if STATIC_DIR.exists():
-        app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+        static_app = StaticFiles(directory=str(STATIC_DIR))
+
+        @app.get("/static/{file_path:path}", include_in_schema=False)
+        async def static_assets(file_path: str):
+            target = (STATIC_DIR / file_path).resolve()
+            if not str(target).startswith(str(STATIC_DIR.resolve())) or not target.is_file():
+                raise HTTPException(status_code=404)
+            return FileResponse(
+                target,
+                headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+            )
+
+        app.mount("/static", static_app, name="static")
 
     @app.get("/", include_in_schema=False)
     async def get_index() -> FileResponse:
         index_path = STATIC_DIR / "index.html"
         if not index_path.exists():
             raise HTTPException(status_code=404, detail="Web UI not found")
-        return FileResponse(index_path)
+        return FileResponse(
+            index_path,
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
 
     @app.get("/v1/health")
     async def health_check() -> dict[str, Any]:
@@ -107,6 +127,41 @@ def create_app(rag_service: RAGService | None = None) -> FastAPI:
             "embedding_dimensions": service.embedder.dimensions,
             "default_collection": service.default_collection,
             "tracing_enabled": tracing_enabled,
+            "model": getattr(service.synthesizer, "model_name", "unknown"),
+            "model_display": service.model_display_name(),
+        }
+
+    @app.get("/v1/config")
+    async def get_ui_config() -> dict[str, Any]:
+        """Returns UI-facing runtime configuration (models, mode, collection, pipeline defaults)."""
+        return service.get_ui_config()
+
+    @app.delete("/v1/documents", dependencies=[Depends(verify_api_key)])
+    async def delete_document(
+        source_uri: str,
+        collection: str = "documents",
+    ) -> dict[str, Any]:
+        """Deletes all chunks indexed under the given source_uri."""
+        if not source_uri:
+            raise HTTPException(status_code=400, detail="source_uri is required")
+        deleted = service.delete_document(source_uri=source_uri, collection_name=collection)
+        return {
+            "status": "deleted",
+            "source_uri": source_uri,
+            "chunks_deleted": deleted,
+            "collection": collection,
+        }
+
+    @app.get("/v1/documents")
+    async def list_documents(collection: str = "documents") -> dict[str, Any]:
+        """Lists indexed documents grouped by source_uri with chunk counts."""
+        docs = service.list_documents(collection_name=collection)
+        total_chunks = sum(doc["chunk_count"] for doc in docs)
+        return {
+            "collection": collection,
+            "documents": docs,
+            "document_count": len(docs),
+            "total_chunks": total_chunks,
         }
 
     @app.get("/v1/stats")
@@ -143,7 +198,11 @@ def create_app(rag_service: RAGService | None = None) -> FastAPI:
                 tmp_path = Path(tmp.name)
 
             try:
-                indexed = await service.ingest_file(tmp_path, collection_name=collection)
+                indexed = await service.ingest_file(
+                    tmp_path,
+                    collection_name=collection,
+                    source_uri=filename,
+                )
                 return {
                     "status": "indexed",
                     "filename": filename,
@@ -179,13 +238,42 @@ def create_app(rag_service: RAGService | None = None) -> FastAPI:
         )
         return results
 
-    @app.post("/v1/chat", response_model=SynthesizedResponse, dependencies=[Depends(verify_api_key)])
-    async def chat(request: ChatRequest) -> SynthesizedResponse:
+    @app.post("/v1/chat", dependencies=[Depends(verify_api_key)])
+    async def chat(request: ChatRequest):
         """Executes full RAG pipeline: Hybrid Search -> FlashRank -> Compression -> LiteLLM Synthesis."""
+        try:
+            service.validate_model_id(request.model)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        if request.stream:
+            async def event_stream():
+                async for event in service.query_stream(
+                    question=request.query,
+                    collection_name=request.collection,
+                    top_k=request.top_k,
+                    model=request.model,
+                    rerank=request.rerank,
+                ):
+                    yield f"data: {json.dumps(event)}\n\n"
+                    await asyncio.sleep(0)
+
+            return StreamingResponse(
+                event_stream(),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",
+                },
+            )
+
         response = await service.query(
             question=request.query,
             collection_name=request.collection,
             top_k=request.top_k,
+            model=request.model,
+            rerank=request.rerank,
         )
         return response
 
