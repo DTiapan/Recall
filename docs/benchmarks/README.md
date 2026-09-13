@@ -20,6 +20,8 @@
 
 **Persisted indexes (Sep 2026):** By default, `recall benchmark` writes a disk-backed Qdrant index to `~/.cache/recall/benchmark-indexes/<dataset>_<limit>_s<seed>/` with a `manifest.json` fingerprint. Re-running the same command **skips re-embed/re-ingest** and goes straight to query eval (~minutes → ~seconds for ingest). Use `--force-reindex` to rebuild, `--in-memory` for ephemeral CI-style runs, `--no-reuse-index` to re-ingest without deleting the slot.
 
+**CI regression gate (Sep 2026):** GitHub Actions runs `recall benchmark --dataset sample --in-memory --min-hit-rate 0.90 --min-mrr 0.60` after pytest. Floors live in `src/recall/eval/retrieval_gate.py` (`SAMPLE_CORPUS_FLOORS`).
+
 ### FiQA@10k scale metrics (Sep 2026)
 
 | Metric | Value |

@@ -27,10 +27,11 @@ jobs:
           OTEL_SDK_DISABLED: "true"
         run: pytest -q
 
-      - name: Run sample retrieval benchmark gate
+      - name: Run sample retrieval regression gate
         env:
           RAG_ENV: test
           RAG_MODE: local
-          QDRANT_URL: ":memory:"
           OTEL_SDK_DISABLED: "true"
-        run: recall benchmark --dataset sample --collection ci_benchmark
+        run: |
+          recall benchmark --dataset sample --collection ci_benchmark --in-memory \
+            --min-hit-rate 0.90 --min-mrr 0.60

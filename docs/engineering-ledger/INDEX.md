@@ -2,12 +2,12 @@
 
 > Read this file before non-trivial work. Update at end of each substantive session.
 
-**Active phase:** Verify  
+**Active phase:** Ship (in progress)  
 **Last updated:** 2026-09-13
 
 ## Current focus
 
-AP-003 Phase A + B **complete** — rerank correctness fixed, BEIR-comparable metrics, disk-persisted indexes. **Next:** AP-003 Phase C tuning (optional) or Ship phase CI gate.
+CI retrieval regression gate landed (`--min-hit-rate` / `--min-mrr` on `recall benchmark`). **Next:** AP-003 Phase C tuning (optional) or close Ship gate on green CI run.
 
 ## Open attack plan
 

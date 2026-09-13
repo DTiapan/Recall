@@ -128,6 +128,24 @@ def main() -> None:
         default=None,
         help="Override hybrid candidate pool size for rerank eval (default: config reranking.candidate_k)",
     )
+    benchmark_parser.add_argument(
+        "--min-hit-rate",
+        type=float,
+        default=None,
+        help="Fail (exit 1) if HitRate@5 falls below this ratio (e.g. 0.9 for 90%%)",
+    )
+    benchmark_parser.add_argument(
+        "--min-mrr",
+        type=float,
+        default=None,
+        help="Fail (exit 1) if MRR falls below this value",
+    )
+    benchmark_parser.add_argument(
+        "--min-ndcg-at-10",
+        type=float,
+        default=None,
+        help="Fail (exit 1) if nDCG@10 falls below this value",
+    )
 
     args = parser.parse_args()
 
@@ -258,6 +276,11 @@ def main() -> None:
                 if index_context is not None:
                     vector_store = QdrantVectorStore(path=str(index_context.qdrant_path))
                     service = RAGService(vector_store=vector_store, default_collection=collection_name)
+                elif args.in_memory:
+                    service = RAGService(
+                        vector_store=QdrantVectorStore(location=":memory:"),
+                        default_collection=collection_name,
+                    )
                 else:
                     service = RAGService(default_collection=collection_name)
                 dense_model = getattr(service.embedder, "model_name", "unknown-dense")
@@ -311,6 +334,25 @@ def main() -> None:
                     f"  archive → {stamped}",
                     flush=True,
                 )
+
+            if (
+                args.min_hit_rate is not None
+                or args.min_mrr is not None
+                or args.min_ndcg_at_10 is not None
+            ):
+                from recall.eval.retrieval_gate import RetrievalGateError, RetrievalGateFloors, check_report_meets_floors
+
+                floors = RetrievalGateFloors(
+                    hit_rate_at_5=args.min_hit_rate,
+                    mrr=args.min_mrr,
+                    ndcg_at_10=args.min_ndcg_at_10,
+                )
+                try:
+                    check_report_meets_floors(report, floors)
+                except RetrievalGateError as exc:
+                    print(f"\nRetrieval gate FAILED: {exc}", file=sys.stderr, flush=True)
+                    sys.exit(1)
+                print("\nRetrieval gate passed.", flush=True)
 
         asyncio.run(_run_benchmark())
 

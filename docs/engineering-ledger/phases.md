@@ -6,7 +6,7 @@
 | Spec / ADR | done | ADR-013 + prior ADRs | Real-world benchmarks ADR |
 | Build | done | 109 tests green | Batched ingest, rerank config wiring |
 | Verify | in_progress | Sample 100%; SciFact@500 fair 91.0% HR@5; FiQA@10k fair 73.8% HR@5, nDCG@10 0.522 | Disk-persisted indexes; AP-003 A+B done |
-| Ship | planned | CI green on main | GitHub Actions ci.yml |
+| Ship | in_progress | CI pytest + sample retrieval gate (`--min-hit-rate 0.90`) | GitHub Actions ci.yml |
 
 ## Phase log
 
